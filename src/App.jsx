@@ -10,10 +10,10 @@ const sb = createClient(
 /* ── Konfiguration ────────────────────────────────────────── */
 const CODE = 'ALTEN25'
 const ROUTE_PAIRS = [
-  { from: 'Marthalen Bahnhof',        to: 'Alten Entsorgungsplatz'   },
-  { from: 'Alten Entsorgungsplatz',   to: 'Marthalen Bahnhof'        },
-  { from: 'Andelfingen Meier Elektro',to: 'Alten Kadaversammelstelle'},
-  { from: 'Alten Kadaversammelstelle',to: 'Andelfingen Meier Elektro'},
+  { from: 'Marthalen Bahnhof',         to: 'Alten Entsorgungsplatz'    },
+  { from: 'Alten Entsorgungsplatz',    to: 'Marthalen Bahnhof'         },
+  { from: 'Andelfingen Meier Elektro', to: 'Alten Kadaversammelstelle' },
+  { from: 'Alten Kadaversammelstelle', to: 'Andelfingen Meier Elektro' },
 ]
 const SH = {
   'Marthalen Bahnhof':         'Marthalen',
@@ -29,12 +29,15 @@ const dlbl = (d, t) => new Date(d + 'T' + t).toLocaleDateString('de-CH', { weekd
 const isPast  = (d, t) => new Date(d + 'T' + t) < new Date()
 const cap     = s => s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase()
 const capFull = s => s.split(' ').map(cap).join(' ')
+const cutoff  = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0] }
 
 /* ── Session ──────────────────────────────────────────────── */
 const sess = {
-  get:   () => { try { return JSON.parse(localStorage.getItem('mfb')) } catch { return null } },
-  save:  u  => localStorage.setItem('mfb', JSON.stringify(u)),
-  clear: () => localStorage.removeItem('mfb'),
+  get:      () => { try { return JSON.parse(localStorage.getItem('mfb')) } catch { return null } },
+  save:     u  => localStorage.setItem('mfb', JSON.stringify(u)),
+  clear:    () => localStorage.removeItem('mfb'),
+  saveName: (fn, ln) => { localStorage.setItem('mfb_fn', fn); localStorage.setItem('mfb_ln', ln) },
+  getName:  () => ({ fn: localStorage.getItem('mfb_fn') || '', ln: localStorage.getItem('mfb_ln') || '' }),
 }
 
 /* ── DB ───────────────────────────────────────────────────── */
@@ -54,7 +57,7 @@ const db = {
     return data
   },
   async getRides(all = false) {
-    let q = sb.from('rides').select('*, bookings(*)').gte('date', tday()).order('date').order('time')
+    let q = sb.from('rides').select('*, bookings(*)').gte('date', cutoff()).order('date').order('time')
     if (!all) q = q.eq('status', 'active')
     const { data } = await q
     return data || []
@@ -78,8 +81,8 @@ const db = {
     if (r) await sb.from('rides').update({ seats_left: r.seats_left + seats }).eq('id', rideId)
   },
   async getRequests() {
-    const { data } = await sb.from('requests').select('*').gte('date', tday()).order('date').order('time')
-    return (data || []).filter(r => !isPast(r.date, r.time))
+    const { data } = await sb.from('requests').select('*').gte('date', cutoff()).order('date').order('time')
+    return data || []
   },
   async addRequest(r) {
     const { data, error } = await sb.from('requests').insert(r).select().single()
@@ -97,6 +100,9 @@ const db = {
     await sb.from('requests').update({ status: 'accepted', driver_id: driver.id, driver_name: driver.display_name }).eq('id', req.id)
   },
   async deleteRequest(id) { await sb.from('requests').delete().eq('id', id) },
+  async sendMessage(userId, userName, message) {
+    await sb.from('messages').insert({ user_id: userId, user_name: userName, message })
+  },
 }
 
 /* ── Farben ───────────────────────────────────────────────── */
@@ -126,7 +132,7 @@ const IP = {
   edit:   'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
   back:   'M19 12H5M12 5l-7 7 7 7',
   hand:   'M18 11V6a2 2 0 00-2-2v0a2 2 0 00-2 2v0M14 10V4a2 2 0 00-2-2v0a2 2 0 00-2 2v0m-2 6V6a2 2 0 00-2-2v0a2 2 0 00-2 2v4m0 0v6a6 6 0 0012 0v-4',
-  mail:   'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm16 2l-8 5-8-5',
+  msg:    'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z',
 }
 const Icon = ({ n, size = 18, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -137,11 +143,11 @@ const Icon = ({ n, size = 18, color = 'currentColor' }) => (
 /* ── MFB Logo ─────────────────────────────────────────────── */
 const MFBLogo = () => (
   <div style={{ background: MFB, borderRadius: 20, padding: '14px 24px', boxShadow: `0 8px 28px ${MFB}66`, display: 'inline-block' }}>
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
       {['M','F','B'].map((l, i) => (
         <div key={i} style={{ position: 'relative' }}>
-          <span style={{ fontSize: 52, fontWeight: 900, color: '#fff', fontFamily: 'Arial Black, Impact, sans-serif', lineHeight: 1, letterSpacing: -2 }}>{l}</span>
-          <span style={{ position: 'absolute', top: 6, left: i === 0 ? 2 : i === 1 ? 2 : 2, fontSize: 8, fontWeight: 700, color: MFB, background: '#fff', padding: '0 2px', borderRadius: 2, whiteSpace: 'nowrap', lineHeight: '12px' }}>
+          <span style={{ fontSize: 52, fontWeight: 900, color: '#fff', fontFamily: 'Arial Black,Impact,sans-serif', lineHeight: 1, letterSpacing: -2 }}>{l}</span>
+          <span style={{ position: 'absolute', top: 6, left: 2, fontSize: 8, fontWeight: 700, color: MFB, background: '#fff', padding: '0 2px', borderRadius: 2, whiteSpace: 'nowrap', lineHeight: '12px' }}>
             {i === 0 ? 'MIT' : i === 1 ? 'FAHR' : 'BÄNKLI'}
           </span>
         </div>
@@ -150,18 +156,17 @@ const MFBLogo = () => (
   </div>
 )
 
-/* ── Kleine Hilfskomponenten ──────────────────────────────── */
+/* ── Hilfskomponenten ─────────────────────────────────────── */
 const ErrBox = ({ msg }) => msg ? <div style={{ color: R, fontSize: 14, marginBottom: 16, padding: '10px 14px', background: '#fef2f2', borderRadius: 10 }}>{msg}</div> : null
 const OkBox  = ({ msg }) => msg ? <div style={{ background: '#d1fae5', borderRadius: 12, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, color: '#065f46', fontWeight: 600 }}><Icon n="check" size={18} color="#10B981" />{msg}</div> : null
 
-function ConfirmModal({ title, msg, confirmLabel = 'Ja, stornieren', confirmColor = R, children, onYes, onNo }) {
+function ConfirmModal({ title, msg, confirmLabel = 'Ja, stornieren', confirmColor = R, onYes, onNo }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 24 }}>
       <div style={{ background: '#fff', borderRadius: 20, padding: 24, width: '100%', maxWidth: 380 }}>
         <h3 style={{ margin: '0 0 8px', fontSize: 18 }}>{title}</h3>
-        <p style={{ color: G, margin: '0 0 16px', fontSize: 15, lineHeight: 1.5 }}>{msg}</p>
-        {children}
-        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+        <p style={{ color: G, margin: '0 0 24px', fontSize: 15, lineHeight: 1.5 }}>{msg}</p>
+        <div style={{ display: 'flex', gap: 10 }}>
           <button style={sBtn('#f4f7f4', G)} onClick={onNo}>Abbrechen</button>
           <button style={sBtn(confirmColor)} onClick={onYes}>{confirmLabel}</button>
         </div>
@@ -286,10 +291,11 @@ function RoutePicker({ value, onChange }) {
 
 /* ── Anmeldung ────────────────────────────────────────────── */
 function AuthScreen({ onLogin }) {
+  const saved = sess.getName()
   const [step, setStep]   = useState(1)
   const [isNew, setIsNew] = useState(false)
-  const [fn, setFn]       = useState('')
-  const [ln, setLn]       = useState('')
+  const [fn, setFn]       = useState(saved.fn)
+  const [ln, setLn]       = useState(saved.ln)
   const [email, setEmail] = useState('')
   const [code, setCode]   = useState('')
   const [pin, setPin]     = useState('')
@@ -312,11 +318,11 @@ function AuthScreen({ onLogin }) {
         if (code.trim().toUpperCase() !== CODE) { setErr('Zugangscode falsch.'); setBusy(false); return }
         if (pin !== pin2) { setErr('PINs stimmen nicht überein.'); setBusy(false); return }
         const u = await db.registerUser(fn, ln, email, hash(pin))
-        sess.save(u); onLogin(u)
+        sess.save(u); sess.saveName(fn, ln); onLogin(u)
       } else {
         const u = await db.findUser(fn, ln)
         if (!u || u.pin_hash !== hash(pin)) { setErr('PIN falsch.'); setBusy(false); return }
-        sess.save(u); onLogin(u)
+        sess.save(u); sess.saveName(fn, ln); onLogin(u)
       }
     } catch (e) {
       if (e.message?.includes('unique')) setErr('Dieser Name ist bereits registriert.')
@@ -455,11 +461,11 @@ function RideForm({ user, initial, onSave, onClose }) {
 
 /* ── Fahrt-Karte ──────────────────────────────────────────── */
 function RideCard({ ride, user, onBook, onEdit, onCancelRide, onCancelBooking }) {
-  const isOwn      = ride.driver_id === user.id
-  const booking    = ride.bookings?.find(b => b.user_id === user.id)
-  const past       = isPast(ride.date, ride.time)
-  const cancelled  = ride.status === 'cancelled'
-  const borderCol  = cancelled ? R : isOwn ? TC.anbieten : booking ? TC.buchen : MFB
+  const isOwn     = ride.driver_id === user.id
+  const booking   = ride.bookings?.find(b => b.user_id === user.id)
+  const past      = isPast(ride.date, ride.time)
+  const cancelled = ride.status === 'cancelled'
+  const borderCol = cancelled ? R : isOwn ? TC.anbieten : booking ? TC.buchen : MFB
 
   return (
     <div style={{ ...sCard, borderLeft: `4px solid ${borderCol}`, opacity: past ? 0.55 : 1 }}>
@@ -501,7 +507,6 @@ function RideCard({ ride, user, onBook, onEdit, onCancelRide, onCancelBooking })
 function ReqCard({ req, user, onAccept, onCancel }) {
   const isOwn    = req.requester_id === user.id
   const accepted = req.status === 'accepted'
-
   return (
     <div style={{ ...sCard, borderLeft: `4px solid ${TC.anfrage}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
@@ -553,15 +558,58 @@ function BookModal({ ride, user, onConfirm, onClose }) {
   )
 }
 
+/* ── Kontaktformular ──────────────────────────────────────── */
+function ContactSection({ user }) {
+  const [msg, setMsg]     = useState('')
+  const [sent, setSent]   = useState(false)
+  const [busy, setBusy]   = useState(false)
+
+  const send = async () => {
+    if (!msg.trim()) return
+    setBusy(true)
+    await db.sendMessage(user.id, user.display_name, msg.trim())
+    setSent(true); setMsg(''); setBusy(false)
+  }
+
+  return (
+    <div style={{ ...sCard, borderLeft: `4px solid ${TC.meine}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <Icon n="msg" size={20} color={TC.meine} />
+        <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>Hilfe & Kontakt</h3>
+      </div>
+      <p style={{ color: G, fontSize: 13, margin: '0 0 14px', lineHeight: 1.6 }}>
+        PIN vergessen, Konto löschen oder andere Fragen? Schreib uns – wir melden uns bei dir.
+      </p>
+      {sent ? (
+        <OkBox msg="Nachricht gesendet! Du erhältst bald eine Antwort." />
+      ) : (
+        <>
+          <textarea style={{ ...sInp, minHeight: 90, resize: 'vertical', marginBottom: 12 }}
+            placeholder="Deine Nachricht…" value={msg} onChange={e => setMsg(e.target.value)} />
+          <button style={sBtn(TC.meine)} onClick={send} disabled={busy || !msg.trim()}>
+            {busy ? '…' : 'Nachricht senden'}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
 /* ── Tab: Buchen ──────────────────────────────────────────── */
 function BuchenTab({ user }) {
-  const [rides, setRides]     = useState([])
-  const [fDate, setFD]        = useState('')
-  const [booking, setBooking] = useState(null)
-  const [ok, setOk]           = useState('')
-  const [loading, setLoading] = useState(true)
+  const [rides, setRides]       = useState([])
+  const [fDate, setFD]          = useState('')
+  const [booking, setBooking]   = useState(null)
+  const [cancelConf, setCancel] = useState(null)
+  const [ok, setOk]             = useState('')
+  const [loading, setLoading]   = useState(true)
 
-  const load = useCallback(async () => { setLoading(true); const r = await db.getRides(); setRides(r.filter(x => x.driver_id !== user.id && !isPast(x.date, x.time))); setLoading(false) }, [user.id])
+  const load = useCallback(async () => {
+    setLoading(true)
+    const r = await db.getRides()
+    setRides(r.filter(x => x.driver_id !== user.id && !isPast(x.date, x.time)))
+    setLoading(false)
+  }, [user.id])
   useEffect(() => { load() }, [load])
 
   const list = rides.filter(r => !fDate || r.date === fDate)
@@ -578,9 +626,19 @@ function BuchenTab({ user }) {
         ? <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Laden…</div>
         : list.length === 0
           ? <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}><Icon n="car" size={44} color="#d1d5db" /><p style={{ marginTop: 12 }}>Keine Fahrten verfügbar</p></div>
-          : list.map(r => <RideCard key={r.id} ride={r} user={user} onBook={r => { setOk(''); setBooking(r) }} onEdit={() => {}} onCancelRide={() => {}} onCancelBooking={() => {}} />)
+          : list.map(r => (
+              <RideCard key={r.id} ride={r} user={user}
+                onBook={r => { setOk(''); setBooking(r) }}
+                onEdit={() => {}} onCancelRide={() => {}}
+                onCancelBooking={(r, b) => setCancel({ r, b })} />
+            ))
       }
       {booking && <BookModal ride={booking} user={user} onConfirm={() => { setBooking(null); setOk('Fahrt gebucht! 🎉'); load() }} onClose={() => setBooking(null)} />}
+      {cancelConf && (
+        <ConfirmModal title="Buchung stornieren?" msg={`Buchung ${SH[cancelConf.r.from_stop]} → ${SH[cancelConf.r.to_stop]} am ${cancelConf.r.date} wirklich stornieren?`}
+          onYes={async () => { await db.cancelBooking(cancelConf.b.id, cancelConf.r.id, cancelConf.b.seats); setCancel(null); setOk('Buchung storniert.'); load() }}
+          onNo={() => setCancel(null)} />
+      )}
     </div>
   )
 }
@@ -652,10 +710,10 @@ function AnfrageTab({ user }) {
       )}
       {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Laden…</div> : <>
         {mine.length > 0 && <>
-          <div style={{ fontSize: 11, fontWeight: 800, color: '#9ca3af', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>Meine Anfragen</div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: TC.anfrage, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>Meine Anfragen</div>
           {mine.map(r => <ReqCard key={r.id} req={r} user={user} onAccept={() => {}} onCancel={async r => { await db.deleteRequest(r.id); setOk('Anfrage storniert.'); load() }} />)}
         </>}
-        <div style={{ fontSize: 11, fontWeight: 800, color: '#9ca3af', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, marginTop: mine.length > 0 ? 16 : 0 }}>Offene Anfragen</div>
+        <div style={{ fontSize: 11, fontWeight: 800, color: '#3B82F6', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, marginTop: mine.length > 0 ? 16 : 0 }}>Offene Anfragen</div>
         {open.length === 0
           ? <div style={{ ...sCard, textAlign: 'center', padding: 20, color: '#9ca3af', fontSize: 14 }}>Keine offenen Anfragen</div>
           : open.map(r => <ReqCard key={r.id} req={r} user={user} onAccept={r => setConfirm(r)} onCancel={() => {}} />)
@@ -663,7 +721,7 @@ function AnfrageTab({ user }) {
       </>}
       {confirm && (
         <ConfirmModal title="Mitfahrt bestätigen?" confirmLabel="Ja, ich fahre! 🚗" confirmColor={TC.anfrage}
-          msg={`${confirm.requester_name} möchte von ${SH[confirm.from_stop]} nach ${SH[confirm.to_stop]} am ${confirm.date} um ${confirm.time} Uhr. Eine Fahrt wird automatisch erstellt.`}
+          msg={`${confirm.requester_name} möchte von ${SH[confirm.from_stop]} nach ${SH[confirm.to_stop]} am ${confirm.date} um ${confirm.time} Uhr.`}
           onYes={doAccept} onNo={() => setConfirm(null)} />
       )}
     </div>
@@ -705,26 +763,23 @@ function MeineTab({ user }) {
   }, [])
   useEffect(() => { load() }, [load])
 
-  const offered  = rides.filter(r => r.driver_id === user.id)
-  const booked   = rides.filter(r => r.bookings?.some(b => b.user_id === user.id) && r.driver_id !== user.id)
-  const myReqs   = reqs.filter(r => r.requester_id === user.id)
+  const cut  = cutoff()
+  const offered = rides.filter(r => r.driver_id === user.id && r.date >= cut)
+  const booked  = rides.filter(r => r.bookings?.some(b => b.user_id === user.id) && r.driver_id !== user.id && r.date >= cut)
+  const myReqs  = reqs.filter(r => r.requester_id === user.id)
 
-  const notifyPassengers = (ride) => {
+  const notifyPassengers = ride => {
     const passengers = (ride.bookings || []).filter(b => b.user_email)
     if (!passengers.length) return
-    const emails   = passengers.map(b => b.user_email).join(',')
-    const subject  = encodeURIComponent('Mitfahrbänkli Alten – Fahrt storniert')
-    const body     = encodeURIComponent(`Hallo,\n\ndie Fahrt von ${SH[ride.from_stop]} nach ${SH[ride.to_stop]} am ${ride.date} um ${ride.time} Uhr wurde leider storniert.\n\nBitte plant euren Weg entsprechend um.\n\nFreundliche Grüsse\n${user.display_name}`)
+    const emails  = passengers.map(b => b.user_email).join(',')
+    const subject = encodeURIComponent('Mitfahrbänkli Alten – Fahrt storniert')
+    const body    = encodeURIComponent(`Hallo,\n\ndie Fahrt von ${SH[ride.from_stop]} nach ${SH[ride.to_stop]} am ${ride.date} um ${ride.time} Uhr wurde leider storniert.\n\nBitte plant euren Weg entsprechend um.\n\nFreundliche Grüsse\n${user.display_name}`)
     window.open(`mailto:${emails}?subject=${subject}&body=${body}`)
   }
 
   const doAction = async () => {
     const { type, data } = confirm
-    if (type === 'ride') {
-      await db.cancelRide(data.id)
-      if (data.bookings?.length > 0) notifyPassengers(data)
-      setOk('Fahrt storniert.')
-    }
+    if (type === 'ride')    { await db.cancelRide(data.id); if (data.bookings?.length > 0) notifyPassengers(data); setOk('Fahrt storniert.') }
     if (type === 'booking') { await db.cancelBooking(data.b.id, data.r.id, data.b.seats); setOk('Buchung storniert.') }
     if (type === 'req')     { await db.deleteRequest(data.id); setOk('Anfrage storniert.') }
     setConf(null); load()
@@ -736,7 +791,7 @@ function MeineTab({ user }) {
         <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />{title}
       </div>
       {loading
-        ? <div style={{ ...sCard, color: '#9ca3af', textAlign: 'center', padding: 16, fontSize: 14 }}>Laden…</div>
+        ? <div style={{ ...sCard, color: '#9ca3af', textAlign: 'center', padding: 16 }}>Laden…</div>
         : items.length === 0
           ? <div style={{ ...sCard, color: '#9ca3af', textAlign: 'center', padding: 20, fontSize: 14 }}>{empty}</div>
           : items.map(render)
@@ -750,16 +805,18 @@ function MeineTab({ user }) {
       <Sec title="Meine Fahrten (Fahrer)" color={TC.anbieten} items={offered} empty="Noch keine Fahrten angeboten"
         render={r => <RideCard key={r.id} ride={r} user={user} onBook={() => {}}
           onEdit={() => setEditing(r)}
-          onCancelRide={r => setConf({ type: 'ride', data: r, msg: r.bookings?.length > 0 ? `${r.bookings.length} Person(en) haben diese Fahrt gebucht. Nach dem Stornieren wird automatisch eine E-Mail geöffnet.` : 'Fahrt wirklich stornieren?' })}
+          onCancelRide={r => setConf({ type: 'ride', data: r, msg: r.bookings?.length > 0 ? `${r.bookings.length} Person(en) haben gebucht. Stornieren und E-Mail öffnen?` : 'Fahrt wirklich stornieren?' })}
           onCancelBooking={() => {}} />} />
 
       <Sec title="Meine Buchungen (Mitfahrer)" color={TC.buchen} items={booked} empty="Noch keine Fahrten gebucht"
         render={r => <RideCard key={r.id} ride={r} user={user} onBook={() => {}} onEdit={() => {}} onCancelRide={() => {}}
-          onCancelBooking={(r, b) => setConf({ type: 'booking', data: { r, b }, msg: `Buchung ${SH[r.from_stop]} → ${SH[r.to_stop]} am ${r.date} wirklich stornieren?` })} />} />
+          onCancelBooking={(r, b) => setConf({ type: 'booking', data: { r, b }, msg: `Buchung ${SH[r.from_stop]} → ${SH[r.to_stop]} am ${r.date} stornieren?` })} />} />
 
       <Sec title="Meine Anfragen" color={TC.anfrage} items={myReqs} empty="Keine Anfragen"
         render={r => <ReqCard key={r.id} req={r} user={user} onAccept={() => {}}
           onCancel={r => setConf({ type: 'req', data: r, msg: `Anfrage ${SH[r.from_stop]} → ${SH[r.to_stop]} stornieren?` })} />} />
+
+      <ContactSection user={user} />
 
       {editing && <RideForm user={user} initial={editing} onSave={() => { setEditing(null); setOk('Fahrt aktualisiert.'); load() }} onClose={() => setEditing(null)} />}
       {confirm && <ConfirmModal title="Stornieren?" msg={confirm.msg} onYes={doAction} onNo={() => setConf(null)} />}
@@ -800,15 +857,17 @@ export default function App() {
         </div>
       </div>
 
+      {/* Tabs – Icons immer farbig, Unterstrich nur wenn aktiv */}
       <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', display: 'flex', flexShrink: 0 }}>
         {TABS.map(({ id, label, icon, color }) => (
           <button key={id} onClick={() => setTab(id)}
             style={{ flex: 1, padding: '10px 4px 8px', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-              background: tab === id ? color + '15' : 'none',
-              color: tab === id ? color : G,
-              fontWeight: tab === id ? 700 : 500, fontSize: 11, fontFamily: 'inherit',
-              borderBottom: tab === id ? `3px solid ${color}` : '3px solid transparent', transition: 'all .15s' }}>
-            <Icon n={icon} size={20} color={tab === id ? color : G} />
+              background: 'none', color,
+              fontWeight: tab === id ? 800 : 500, fontSize: 11, fontFamily: 'inherit',
+              borderBottom: tab === id ? `3px solid ${color}` : '3px solid transparent',
+              opacity: tab === id ? 1 : 0.45,
+              transition: 'all .15s' }}>
+            <Icon n={icon} size={20} color={color} />
             {label}
           </button>
         ))}
