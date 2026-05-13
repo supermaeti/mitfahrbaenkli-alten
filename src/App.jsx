@@ -317,7 +317,8 @@ function LoginHelp() {
           ) : (
             <>
               <p style={{ color: G, fontSize: 13, margin: '0 0 14px', lineHeight: 1.6 }}>
-                Kein Zugang mehr? Schreib uns – wir helfen dir weiter.
+                Kein Zugang mehr? Schreib uns – wir helfen dir weiter.<br /><br />
+                <span style={{ color: '#1a2e1a', fontWeight: 600 }}>Damit wir dich erreichen können:</span> Bitte hinterlasse deine <b>Telefonnummer oder E-Mail-Adresse</b> in deiner Nachricht, damit wir uns bei dir melden können.
               </p>
               <label style={sLbl}>Dein Name</label>
               <input style={{ ...sInp, marginBottom: 12 }} placeholder="Vor- und Nachname" value={name} onChange={e => setName(e.target.value)} />
