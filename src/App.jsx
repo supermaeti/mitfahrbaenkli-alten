@@ -289,6 +289,52 @@ function RoutePicker({ value, onChange }) {
   )
 }
 
+/* ── Hilfe auf Login-Seite ────────────────────────────────── */
+function LoginHelp() {
+  const [open, setOpen]   = useState(false)
+  const [name, setName]   = useState('')
+  const [msg, setMsg]     = useState('')
+  const [sent, setSent]   = useState(false)
+  const [busy, setBusy]   = useState(false)
+
+  const send = async () => {
+    if (!name.trim() || !msg.trim()) return
+    setBusy(true)
+    await db.sendMessage('anonym', name.trim(), msg.trim())
+    setSent(true); setBusy(false)
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <button onClick={() => setOpen(!open)}
+        style={{ background: 'none', border: `1.5px solid ${MFB}44`, borderRadius: 12, padding: '10px 16px', color: MFB, fontWeight: 600, fontSize: 14, cursor: 'pointer', width: '100%', fontFamily: 'inherit' }}>
+        {open ? '× Schliessen' : '❓ Hilfe – PIN vergessen oder Fragen?'}
+      </button>
+      {open && (
+        <div style={{ ...sCard, marginTop: 10 }}>
+          {sent ? (
+            <OkBox msg="Nachricht gesendet! Du wirst so bald wie möglich kontaktiert." />
+          ) : (
+            <>
+              <p style={{ color: G, fontSize: 13, margin: '0 0 14px', lineHeight: 1.6 }}>
+                Kein Zugang mehr? Schreib uns – wir helfen dir weiter.
+              </p>
+              <label style={sLbl}>Dein Name</label>
+              <input style={{ ...sInp, marginBottom: 12 }} placeholder="Vor- und Nachname" value={name} onChange={e => setName(e.target.value)} />
+              <label style={sLbl}>Deine Nachricht</label>
+              <textarea style={{ ...sInp, minHeight: 80, resize: 'vertical', marginBottom: 12 }}
+                placeholder="z.B. PIN vergessen, Konto löschen…" value={msg} onChange={e => setMsg(e.target.value)} />
+              <button style={sBtn(TC.meine)} onClick={send} disabled={busy || !name.trim() || !msg.trim()}>
+                {busy ? '…' : 'Nachricht senden'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ── Anmeldung ────────────────────────────────────────────── */
 function AuthScreen({ onLogin }) {
   const saved = sess.getName()
@@ -377,6 +423,7 @@ function AuthScreen({ onLogin }) {
           </div>
         )}
         <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 12 }}>🔒 PINs werden verschlüsselt gespeichert</p>
+        <LoginHelp />
       </div>
     </div>
   )
