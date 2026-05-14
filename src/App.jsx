@@ -891,18 +891,9 @@ function MeineTab({ user }) {
   const booked  = rides.filter(r => r.bookings?.some(b => b.user_id === user.id) && r.driver_id !== user.id && r.date >= cut)
   const myReqs  = reqs.filter(r => r.requester_id === user.id)
 
-  const notifyPassengers = ride => {
-    const passengers = (ride.bookings || []).filter(b => b.user_email)
-    if (!passengers.length) return
-    const emails  = passengers.map(b => b.user_email).join(',')
-    const subject = encodeURIComponent('Mitfahrbänkli Alten – Fahrt storniert')
-    const body    = encodeURIComponent(`Hallo,\n\ndie Fahrt von ${SH[ride.from_stop]} nach ${SH[ride.to_stop]} am ${ride.date} um ${ride.time} Uhr wurde leider storniert.\n\nBitte plant euren Weg entsprechend um.\n\nFreundliche Grüsse\n${user.display_name}`)
-    window.open(`mailto:${emails}?subject=${subject}&body=${body}`)
-  }
-
   const doAction = async () => {
     const { type, data } = confirm
-    if (type === 'ride')    { await db.cancelRide(data.id); if (data.bookings?.length > 0) notifyPassengers(data); setOk('Fahrt storniert.') }
+    if (type === 'ride')    { await db.cancelRide(data.id); setOk('Fahrt storniert.') }
     if (type === 'booking') { await db.cancelBooking(data.b.id, data.r.id, data.b.seats); setOk('Buchung storniert.') }
     if (type === 'req')     { await db.deleteRequest(data.id); setOk('Anfrage storniert.') }
     setConf(null); load()
@@ -928,7 +919,7 @@ function MeineTab({ user }) {
       <Sec title="Meine Fahrten (Fahrer)" color={TC.anbieten} items={offered} empty="Noch keine Fahrten angeboten"
         render={r => <RideCard key={r.id} ride={r} user={user} onBook={() => {}}
           onEdit={() => setEditing(r)}
-          onCancelRide={r => setConf({ type: 'ride', data: r, msg: r.bookings?.length > 0 ? `${r.bookings.length} Person(en) haben gebucht. Stornieren und E-Mail öffnen?` : 'Fahrt wirklich stornieren?' })}
+          onCancelRide={r => setConf({ type: 'ride', data: r, msg: r.bookings?.length > 0 ? `${r.bookings.length} Person(en) haben diese Fahrt gebucht. Trotzdem stornieren?` : 'Fahrt wirklich stornieren?' })}
           onCancelBooking={() => {}} />} />
 
       <Sec title="Meine Buchungen (Mitfahrer)" color={TC.buchen} items={booked} empty="Noch keine Fahrten gebucht"
