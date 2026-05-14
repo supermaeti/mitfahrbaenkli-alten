@@ -272,24 +272,18 @@ function ClockPicker({ value, onConfirm, onClose }) {
 
 /* ── Routen-Auswahl ───────────────────────────────────────── */
 function RoutePicker({ value, onChange }) {
+  const selIdx = value ? ROUTE_PAIRS.findIndex(r => r.from === value.from && r.to === value.to) : -1
   return (
     <div>
       <label style={sLbl}>Route wählen</label>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {ROUTE_PAIRS.map((r, i) => {
-          const sel = value && value.from === r.from && value.to === r.to
-          return (
-            <button key={i} onClick={() => onChange(r)}
-              style={{ background: sel ? MFB : '#f0fafb', color: sel ? '#fff' : '#1a2e1a',
-                border: `2px solid ${sel ? MFB : '#cde0d0'}`, borderRadius: 14, padding: '14px 10px',
-                cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center', lineHeight: 1.5, transition: 'all .15s' }}>
-              <div style={{ fontSize: 13, fontWeight: 800 }}>{SH[r.from]}</div>
-              <div style={{ fontSize: 18, opacity: 0.6 }}>↓</div>
-              <div style={{ fontSize: 13, fontWeight: 800 }}>{SH[r.to]}</div>
-            </button>
-          )
-        })}
-      </div>
+      <select style={{ ...sInp, color: selIdx === -1 ? '#9ca3af' : '#1a2e1a' }}
+        value={selIdx === -1 ? '' : selIdx}
+        onChange={e => { const i = +e.target.value; if (!isNaN(i)) onChange(ROUTE_PAIRS[i]) }}>
+        <option value="">– Bitte Route auswählen –</option>
+        {ROUTE_PAIRS.map((r, i) => (
+          <option key={i} value={i}>{SH[r.from]} → {SH[r.to]}</option>
+        ))}
+      </select>
     </div>
   )
 }
