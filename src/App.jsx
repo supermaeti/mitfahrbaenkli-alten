@@ -36,6 +36,13 @@ const cap     = s => s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowe
 const capFull = s => s.split(' ').map(cap).join(' ')
 const cutoff  = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0] }
 
+/* ── Gesehene Benachrichtigungen ──────────────────────────── */
+const seenNotifs = {
+  get:    ()  => { try { return JSON.parse(localStorage.getItem('mfb_notifs')) || [] } catch { return [] } },
+  mark:   id  => { const s = seenNotifs.get(); if (!s.includes(id)) { s.push(id); localStorage.setItem('mfb_notifs', JSON.stringify(s)) } },
+  unseen: ids => ids.filter(id => !seenNotifs.get().includes(id)),
+}
+
 /* ── Session ──────────────────────────────────────────────── */
 const sess = {
   get:      () => { try { return JSON.parse(localStorage.getItem('mfb')) } catch { return null } },
@@ -60,6 +67,10 @@ const db = {
     }).select().single()
     if (error) throw error
     return data
+  },
+  async getCancelledForUser(userId) {
+    const { data } = await sb.from('rides').select('*, bookings(*)').eq('status', 'cancelled').gte('date', cutoff())
+    return (data || []).filter(r => r.bookings?.some(b => b.user_id === userId))
   },
   async getRides(all = false) {
     let q = sb.from('rides').select('*, bookings(*)').gte('date', cutoff()).order('date').order('time')
@@ -284,6 +295,56 @@ function RoutePicker({ value, onChange }) {
           <option key={i} value={i}>{SH[r.from]} → {SH[r.to]}</option>
         ))}
       </select>
+    </div>
+  )
+}
+
+/* ── Stornierungsbenachrichtigung ─────────────────────────── */
+function CancelNotifications({ userId }) {
+  const [items, setItems] = useState([])
+
+  useEffect(() => {
+    db.getCancelledForUser(userId).then(rides => {
+      setItems(rides.filter(r => seenNotifs.unseen([r.id]).length > 0))
+    })
+  }, [userId])
+
+  const dismiss = id => { seenNotifs.mark(id); setItems(prev => prev.filter(r => r.id !== id)) }
+  const dismissAll = () => { items.forEach(r => seenNotifs.mark(r.id)); setItems([]) }
+
+  if (!items.length) return null
+
+  return (
+    <div style={{ background: '#fef2f2', borderBottom: '2px solid #fecaca', flexShrink: 0 }}>
+      <div style={{ padding: '10px 16px 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: R, boxShadow: `0 0 0 3px ${R}33` }} />
+          <span style={{ fontSize: 13, fontWeight: 800, color: R, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            {items.length === 1 ? '1 Fahrt storniert' : `${items.length} Fahrten storniert`}
+          </span>
+        </div>
+        {items.length > 1 && (
+          <button onClick={dismissAll} style={{ background: 'none', border: 'none', color: R, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Alle bestätigen ✓
+          </button>
+        )}
+      </div>
+      {items.map(ride => (
+        <div key={ride.id} style={{ margin: '6px 12px 10px', background: '#fff', borderRadius: 12, padding: '12px 14px', border: `1.5px solid #fecaca`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div>
+            <div style={{ fontWeight: 800, color: '#1a2e1a', fontSize: 15 }}>
+              🚫 {SH[ride.from_stop]} → {SH[ride.to_stop]}
+            </div>
+            <div style={{ fontSize: 13, color: G, marginTop: 3 }}>
+              {dlbl(ride.date, ride.time)} · {ride.time} Uhr · Fahrer: {ride.driver_name}
+            </div>
+          </div>
+          <button onClick={() => dismiss(ride.id)}
+            style={{ background: R, color: '#fff', border: 'none', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit' }}>
+            OK ✓
+          </button>
+        </div>
+      ))}
     </div>
   )
 }
@@ -934,6 +995,8 @@ export default function App() {
           </button>
         ))}
       </div>
+
+      <CancelNotifications userId={user.id} />
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {tab === 'buchen'   && <BuchenTab    user={user} />}
