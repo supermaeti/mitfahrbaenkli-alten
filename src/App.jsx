@@ -534,8 +534,8 @@ function RideForm({ user, initial, onSave, onClose }) {
       <div style={{ marginBottom: 16 }}>
         <label style={sLbl}>Abfahrtszeit</label>
         <button onClick={() => setClock(true)} style={{ ...sInp, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#f7fbf8' }}>
-          <span style={{ color: MFB, fontWeight: 700, fontSize: 16 }}>{time} Uhr</span>
-          <Icon n="clock" size={16} color={MFB} />
+          <span style={{ color: '#1a2e1a', fontWeight: 400, fontSize: 16 }}>{time} Uhr</span>
+          <Icon n="clock" size={16} color={G} />
         </button>
       </div>
       <div style={{ marginBottom: 16 }}>
@@ -727,7 +727,7 @@ function BuchenTab({ user }) {
     <div style={{ padding: 16 }}>
       <div style={{ ...sCard, padding: 14 }}>
         <label style={sLbl}>Datum filtern</label>
-        <input style={sInp} type="date" value={fDate} min={tday()} onChange={e => setFD(e.target.value)} />
+        <input style={sInp} type="date" value={fDate} min={tday()} onChange={e => setFD(e.target.value)} onClick={e => e.target.showPicker?.()} />
         {fDate && <button style={{ ...sBtn('#f4f7f4', G), marginTop: 10, padding: '9px 14px', fontSize: 14 }} onClick={() => setFD('')}>× Zurücksetzen</button>}
       </div>
       {ok && (() => {
@@ -819,8 +819,8 @@ function AnfrageTab({ user }) {
           <div style={{ marginBottom: 16 }}>
             <label style={sLbl}>Gewünschte Zeit</label>
             <button onClick={() => setClock(true)} style={{ ...sInp, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#f7fbf8' }}>
-              <span style={{ color: MFB, fontWeight: 700, fontSize: 16 }}>{time} Uhr</span>
-              <Icon n="clock" size={16} color={MFB} />
+              <span style={{ color: '#1a2e1a', fontWeight: 400, fontSize: 16 }}>{time} Uhr</span>
+              <Icon n="clock" size={16} color={G} />
             </button>
           </div>
           <div style={{ marginBottom: 20 }}>
