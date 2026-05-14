@@ -222,7 +222,7 @@ function PinInput({ value, onChange, autoFocus }) {
 }
 
 /* ── Drum Clock ───────────────────────────────────────────── */
-const IH = 48, VN = 5
+const IH = 44, VN = 5
 function DrumCol({ items, value, onChange }) {
   const ref = useRef(), sY = useRef(0), sI = useRef(0)
   const half = Math.floor(VN / 2)
@@ -237,9 +237,9 @@ function DrumCol({ items, value, onChange }) {
   }
   return (
     <div style={{ position: 'relative', flex: 1, userSelect: 'none' }}>
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: half*IH, background: 'linear-gradient(to bottom,rgba(255,255,255,.97),transparent)', zIndex: 2, pointerEvents: 'none' }} />
-      <div style={{ position: 'absolute', top: half*IH, left: 4, right: 4, height: IH, background: MFBL, borderTop: `2px solid ${MFB}`, borderBottom: `2px solid ${MFB}`, zIndex: 1, borderRadius: 8 }} />
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: half*IH, background: 'linear-gradient(to top,rgba(255,255,255,.97),transparent)', zIndex: 2, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: half*IH, background: 'linear-gradient(to bottom,rgba(255,255,255,.95),transparent)', zIndex: 2, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: half*IH, left: 0, right: 0, height: IH, background: '#f2f2f7', zIndex: 1, borderRadius: 8 }} />
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: half*IH, background: 'linear-gradient(to top,rgba(255,255,255,.95),transparent)', zIndex: 2, pointerEvents: 'none' }} />
       <div ref={ref} onMouseDown={onMD}
         onTouchStart={e => { sY.current = e.touches[0].clientY; sI.current = Math.round(ref.current.scrollTop / IH) }}
         onTouchMove={e => { ref.current.scrollTop = Math.max(0, Math.min((items.length-1)*IH, sI.current*IH + sY.current - e.touches[0].clientY)) }}
@@ -249,8 +249,8 @@ function DrumCol({ items, value, onChange }) {
         {items.map(item => (
           <div key={item} onClick={() => { scrollTo(items.indexOf(item)); onChange(item) }}
             style={{ height: IH, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: item === value ? 28 : 20, fontWeight: item === value ? 800 : 400,
-              color: item === value ? MFB : '#9ca3af', fontVariantNumeric: 'tabular-nums' }}>{item}</div>
+              fontSize: item === value ? 22 : 18, fontWeight: item === value ? 600 : 400,
+              color: item === value ? '#1a2e1a' : '#9ca3af', fontVariantNumeric: 'tabular-nums' }}>{item}</div>
         ))}
         <div style={{ height: half*IH }} />
       </div>
@@ -262,20 +262,19 @@ function ClockPicker({ value, onConfirm, onClose }) {
   const [h, setH] = useState(value.split(':')[0])
   const [m, setM] = useState(value.split(':')[1])
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', zIndex: 200 }}>
-      <div style={{ background: '#fff', borderRadius: '24px 24px 0 0', padding: '24px 24px 36px', width: '100%', maxWidth: 480, margin: '0 auto', boxSizing: 'border-box' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Abfahrtszeit</h3>
-          <div style={{ fontSize: 40, fontWeight: 900, color: MFB, fontVariantNumeric: 'tabular-nums' }}>{h}:{m}</div>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.25)', display: 'flex', alignItems: 'flex-end', zIndex: 200 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 480, margin: '0 auto', boxSizing: 'border-box', overflow: 'hidden' }}>
+        {/* Titelzeile */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid #e5e7eb' }}>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: G, fontSize: 16, cursor: 'pointer', fontFamily: 'inherit' }}>Abbrechen</button>
+          <span style={{ fontSize: 16, fontWeight: 600, color: '#1a2e1a', fontVariantNumeric: 'tabular-nums' }}>{h}:{m}</span>
+          <button onClick={() => onConfirm(`${h}:${m}`)} style={{ background: 'none', border: 'none', color: MFB, fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Fertig</button>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', background: '#fafafa', borderRadius: 16, padding: '4px 0', marginBottom: 20 }}>
+        {/* Drum */}
+        <div style={{ display: 'flex', alignItems: 'center', padding: '0 24px 24px' }}>
           <DrumCol items={HH} value={h} onChange={setH} />
-          <div style={{ fontSize: 36, fontWeight: 900, color: MFB, padding: '0 6px', flexShrink: 0 }}>:</div>
+          <div style={{ fontSize: 28, fontWeight: 300, color: '#1a2e1a', padding: '0 8px', flexShrink: 0, marginBottom: 4 }}>:</div>
           <DrumCol items={MM} value={m} onChange={setM} />
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button style={sBtn('#f4f7f4', G)} onClick={onClose}>Abbrechen</button>
-          <button style={sBtn()} onClick={() => onConfirm(`${h}:${m}`)}>Übernehmen</button>
         </div>
       </div>
     </div>
