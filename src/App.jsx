@@ -33,6 +33,7 @@ const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 
 const dlbl = (d, t) => new Date(d + 'T' + t).toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'short' })
 const isPast  = (d, t) => new Date(d + 'T' + t) < new Date()
 const cap     = s => s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase()
+const pl      = n => n === 1 ? '1 Platz' : `${n} Plätze`
 const capFull = s => s.split(' ').map(cap).join(' ')
 const cutoff  = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0] }
 
@@ -528,19 +529,19 @@ function RideForm({ user, initial, onSave, onClose }) {
       <div style={{ marginBottom: 16 }}><RoutePicker value={route} onChange={setRoute} /></div>
       <div style={{ marginBottom: 16 }}>
         <label style={sLbl}>Datum</label>
-        <input style={sInp} type="date" value={date} min={tday()} onChange={e => setDate(e.target.value)} />
+        <input style={sInp} type="date" value={date} min={tday()} onChange={e => setDate(e.target.value)} onClick={e => e.target.showPicker?.()} />
       </div>
       <div style={{ marginBottom: 16 }}>
         <label style={sLbl}>Abfahrtszeit</label>
-        <button onClick={() => setClock(true)} style={{ ...sBtn('#f0fafb', '#1a2e1a'), display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', border: '1.5px solid #cde0d0' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Icon n="clock" size={18} color={MFB} /><span style={{ fontSize: 22, fontWeight: 900, color: MFB, fontVariantNumeric: 'tabular-nums' }}>{time} Uhr</span></span>
-          <span style={{ fontSize: 13, color: '#9ca3af' }}>ändern</span>
+        <button onClick={() => setClock(true)} style={{ ...sInp, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#f7fbf8' }}>
+          <span style={{ color: MFB, fontWeight: 700, fontSize: 16 }}>{time} Uhr</span>
+          <Icon n="clock" size={16} color={MFB} />
         </button>
       </div>
       <div style={{ marginBottom: 16 }}>
         <label style={sLbl}>Freie Plätze</label>
         <select style={sInp} value={seats} onChange={e => setSeats(e.target.value)}>
-          {[1,2,3,4,5,6,7].map(n => <option key={n} value={n}>{n} Platz{n > 1 ? 'e' : ''}</option>)}
+          {[1,2,3,4,5,6,7].map(n => <option key={n} value={n}>{pl(n)}</option>)}
         </select>
       </div>
       <div style={{ marginBottom: 20 }}>
@@ -655,7 +656,7 @@ function BookModal({ ride, user, onConfirm, onClose }) {
         </p>
         <label style={sLbl}>Anzahl Plätze</label>
         <select style={{ ...sInp, marginBottom: 20 }} value={seats} onChange={e => setSeats(+e.target.value)}>
-          {Array.from({ length: ride.seats_left }, (_, i) => i+1).map(n => <option key={n} value={n}>{n} Platz{n > 1 ? 'e' : ''}</option>)}
+          {Array.from({ length: ride.seats_left }, (_, i) => i+1).map(n => <option key={n} value={n}>{pl(n)}</option>)}
         </select>
         <div style={{ display: 'flex', gap: 10 }}>
           <button style={sBtn('#f4f7f4', G)} onClick={onClose}>Abbrechen</button>
@@ -813,13 +814,13 @@ function AnfrageTab({ user }) {
           <div style={{ marginBottom: 16 }}><RoutePicker value={route} onChange={setRoute} /></div>
           <div style={{ marginBottom: 16 }}>
             <label style={sLbl}>Datum</label>
-            <input style={sInp} type="date" value={date} min={tday()} onChange={e => setDate(e.target.value)} />
+            <input style={sInp} type="date" value={date} min={tday()} onChange={e => setDate(e.target.value)} onClick={e => e.target.showPicker?.()} />
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={sLbl}>Gewünschte Zeit</label>
-            <button onClick={() => setClock(true)} style={{ ...sBtn('#f0fafb', '#1a2e1a'), display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', border: '1.5px solid #cde0d0' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Icon n="clock" size={18} color={MFB} /><span style={{ fontSize: 22, fontWeight: 900, color: MFB, fontVariantNumeric: 'tabular-nums' }}>{time} Uhr</span></span>
-              <span style={{ fontSize: 13, color: '#9ca3af' }}>ändern</span>
+            <button onClick={() => setClock(true)} style={{ ...sInp, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#f7fbf8' }}>
+              <span style={{ color: MFB, fontWeight: 700, fontSize: 16 }}>{time} Uhr</span>
+              <Icon n="clock" size={16} color={MFB} />
             </button>
           </div>
           <div style={{ marginBottom: 20 }}>
