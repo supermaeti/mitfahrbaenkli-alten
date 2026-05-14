@@ -533,10 +533,7 @@ function RideForm({ user, initial, onSave, onClose }) {
       </div>
       <div style={{ marginBottom: 16 }}>
         <label style={sLbl}>Abfahrtszeit</label>
-        <button onClick={() => setClock(true)} style={{ ...sInp, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#f7fbf8' }}>
-          <span style={{ color: '#1a2e1a', fontWeight: 400, fontSize: 16 }}>{time} Uhr</span>
-          <Icon n="clock" size={16} color={G} />
-        </button>
+        <input style={sInp} type="time" value={time} onChange={e => setTime(e.target.value)} onClick={e => e.target.showPicker?.()} />
       </div>
       <div style={{ marginBottom: 16 }}>
         <label style={sLbl}>Freie Plätze</label>
@@ -818,10 +815,7 @@ function AnfrageTab({ user }) {
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={sLbl}>Gewünschte Zeit</label>
-            <button onClick={() => setClock(true)} style={{ ...sInp, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#f7fbf8' }}>
-              <span style={{ color: '#1a2e1a', fontWeight: 400, fontSize: 16 }}>{time} Uhr</span>
-              <Icon n="clock" size={16} color={G} />
-            </button>
+            <input style={sInp} type="time" value={time} onChange={e => setTime(e.target.value)} onClick={e => e.target.showPicker?.()} />
           </div>
           <div style={{ marginBottom: 20 }}>
             <label style={sLbl}>Hinweis (optional)</label>
