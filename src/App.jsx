@@ -17,10 +17,15 @@ const ROUTE_PAIRS = [
 ]
 const SH = {
   'Marthalen Bahnhof':         'Marthalen',
-  'Alten Entsorgungsplatz':    'Alten Entsorg.',
-  'Alten Kadaversammelstelle': 'Alten Kadaver',
+  'Alten Entsorgungsplatz':    'Alten',
+  'Alten Kadaversammelstelle': 'Alten',
   'Andelfingen Meier Elektro': 'Andelfingen',
 }
+const BENCH_HINT = {
+  'Alten Entsorgungsplatz':    '📍 Bänkli bei der Glas- und Grüngutentsorgung (Richtung Marthalen)',
+  'Alten Kadaversammelstelle': '📍 Bänkli gegenüber der Kadaversammelstelle beim Brunnen (Richtung Andelfingen)',
+}
+const getBenchHint = ride => BENCH_HINT[ride.from_stop] || BENCH_HINT[ride.to_stop] || null
 const HH   = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
 const MM   = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'))
 const tday = () => new Date().toISOString().split('T')[0]
@@ -584,7 +589,7 @@ function BookModal({ ride, user, onConfirm, onClose }) {
   const confirm = async () => {
     setBusy(true)
     await db.bookRide(ride.id, user.id, user.display_name, user.email, seats)
-    onConfirm(); setBusy(false)
+    onConfirm(ride); setBusy(false)
   }
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', zIndex: 100 }}>
@@ -669,7 +674,17 @@ function BuchenTab({ user }) {
         <input style={sInp} type="date" value={fDate} min={tday()} onChange={e => setFD(e.target.value)} />
         {fDate && <button style={{ ...sBtn('#f4f7f4', G), marginTop: 10, padding: '9px 14px', fontSize: 14 }} onClick={() => setFD('')}>× Zurücksetzen</button>}
       </div>
-      <OkBox msg={ok} />
+      {ok && (() => {
+        const [main, hint] = ok.split('__HINT__')
+        return (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ background: '#d1fae5', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, color: '#065f46', fontWeight: 600 }}>
+              <Icon n="check" size={18} color="#10B981" />{main}
+            </div>
+            {hint && <div style={{ background: '#f0fafb', borderRadius: 12, padding: '12px 16px', marginTop: 8, fontSize: 14, color: '#1a4a50', borderLeft: `3px solid ${MFB}` }}>{hint}</div>}
+          </div>
+        )
+      })()}
       {loading
         ? <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Laden…</div>
         : list.length === 0
@@ -681,7 +696,12 @@ function BuchenTab({ user }) {
                 onCancelBooking={(r, b) => setCancel({ r, b })} />
             ))
       }
-      {booking && <BookModal ride={booking} user={user} onConfirm={() => { setBooking(null); setOk('Fahrt gebucht! 🎉'); load() }} onClose={() => setBooking(null)} />}
+      {booking && <BookModal ride={booking} user={user}       onConfirm={bookedRide => {
+        setBooking(null)
+        const hint = getBenchHint(bookedRide)
+        setOk('Fahrt gebucht! 🎉' + (hint ? `__HINT__${hint}` : ''))
+        load()
+      }} onClose={() => setBooking(null)} />}
       {cancelConf && (
         <ConfirmModal title="Buchung stornieren?" msg={`Buchung ${SH[cancelConf.r.from_stop]} → ${SH[cancelConf.r.to_stop]} am ${cancelConf.r.date} wirklich stornieren?`}
           onYes={async () => { await db.cancelBooking(cancelConf.b.id, cancelConf.r.id, cancelConf.b.seats); setCancel(null); setOk('Buchung storniert.'); load() }}
