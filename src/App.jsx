@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
-/* ── Supabase ─────────────────────────────────────────────── */
 const sb = createClient(
   'https://zdljleqeqdmgwuocxzcd.supabase.co',
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkbGpsZXFlcWRtZ3d1b2N4emNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MDk5OTAsImV4cCI6MjA5NDA4NTk5MH0.wHPF3I2J10IY0HKkyjYDfotfbUB0EPKtXLT16EVGTW0'
 )
 
-/* ── Konfiguration ────────────────────────────────────────── */
-const CODE = 'ALTEN25'
+const CODE       = 'ALTEN25'
+const ADMIN_CODE = 'MFB_ADMIN'
 const ROUTE_PAIRS = [
   { from: 'Marthalen Bahnhof',         to: 'Alten Entsorgungsplatz'    },
   { from: 'Alten Entsorgungsplatz',    to: 'Marthalen Bahnhof'         },
@@ -25,32 +24,24 @@ const BENCH_HINT = {
   'Alten Entsorgungsplatz':    '📍 Bänkli bei der Glas- und Grüngutentsorgung (Richtung Marthalen)',
   'Alten Kadaversammelstelle': '📍 Bänkli gegenüber der Kadaversammelstelle beim Brunnen (Richtung Andelfingen)',
 }
-const getBenchHint = ride => BENCH_HINT[ride.from_stop] || BENCH_HINT[ride.to_stop] || null
+const getBenchHint = r => BENCH_HINT[r.from_stop] || BENCH_HINT[r.to_stop] || null
 const HH    = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
 const MM    = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'))
 const WDAYS = ['MO','DI','MI','DO','FR','SA','SO']
 const tday  = () => new Date().toISOString().split('T')[0]
 const hash  = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i); return (h >>> 0).toString(36) }
 const dlbl  = (d, t) => new Date(d + 'T' + t).toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'short' })
-const isPast  = (d, t) => new Date(d + 'T' + t) < new Date(Date.now() - 12 * 60 * 60 * 1000)
+const isPast  = (d, t) => new Date(d + 'T' + t) < new Date(Date.now() - 12 * 3600000)
 const cap     = s => s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase()
 const capFull = s => s.split(' ').map(cap).join(' ')
 const pl      = n => n === 1 ? '1 Platz' : `${n} Plätze`
-const cutoff  = () => { const d = new Date(Date.now() - 12 * 60 * 60 * 1000); return d.toISOString().split('T')[0] }
-
-const getDatesForDays = (selectedDays, endDate) => {
-  const dates = []
-  const end = new Date(endDate + 'T23:59:59')
-  const cur = new Date(); cur.setHours(0, 0, 0, 0)
-  while (cur <= end) {
-    const dn = WDAYS[(cur.getDay() + 6) % 7]
-    if (selectedDays.includes(dn)) dates.push(cur.toISOString().split('T')[0])
-    cur.setDate(cur.getDate() + 1)
-  }
+const cutoff  = () => new Date(Date.now() - 12 * 3600000).toISOString().split('T')[0]
+const getDatesForDays = (days, end) => {
+  const dates = [], e = new Date(end + 'T23:59:59'), c = new Date(); c.setHours(0,0,0,0)
+  while (c <= e) { const d = WDAYS[(c.getDay()+6)%7]; if (days.includes(d)) dates.push(c.toISOString().split('T')[0]); c.setDate(c.getDate()+1) }
   return dates
 }
 
-/* ── Session ──────────────────────────────────────────────── */
 const sess = {
   get:      () => { try { return JSON.parse(localStorage.getItem('mfb')) } catch { return null } },
   save:     u  => localStorage.setItem('mfb', JSON.stringify(u)),
@@ -58,42 +49,40 @@ const sess = {
   saveName: (fn, ln) => { localStorage.setItem('mfb_fn', fn); localStorage.setItem('mfb_ln', ln) },
   getName:  () => ({ fn: localStorage.getItem('mfb_fn') || '', ln: localStorage.getItem('mfb_ln') || '' }),
 }
-
 const seenNotifs = {
-  get:    ()  => { try { return JSON.parse(localStorage.getItem('mfb_notifs')) || [] } catch { return [] } },
-  mark:   id  => { const s = seenNotifs.get(); if (!s.includes(id)) { s.push(id); localStorage.setItem('mfb_notifs', JSON.stringify(s)) } },
+  get:    () => { try { return JSON.parse(localStorage.getItem('mfb_notifs')) || [] } catch { return [] } },
+  mark:   id => { const s = seenNotifs.get(); if (!s.includes(id)) { s.push(id); localStorage.setItem('mfb_notifs', JSON.stringify(s)) } },
   unseen: ids => ids.filter(id => !seenNotifs.get().includes(id)),
 }
 
-/* ── DB ───────────────────────────────────────────────────── */
 const db = {
   async findUser(fn, ln) {
-    const { data } = await sb.from('users').select('*')
-      .eq('firstname', fn.trim().toLowerCase()).eq('lastname', ln.trim().toLowerCase()).maybeSingle()
+    const { data } = await sb.from('users').select('*').eq('firstname', fn.trim().toLowerCase()).eq('lastname', ln.trim().toLowerCase()).maybeSingle()
     return data
   },
   async registerUser(fn, ln, email, pinHash) {
-    const { data, error } = await sb.from('users').insert({
-      firstname: fn.trim().toLowerCase(), lastname: ln.trim().toLowerCase(),
-      display_name: capFull(fn) + ' ' + capFull(ln),
-      email: email.trim().toLowerCase(), pin_hash: pinHash,
-    }).select().single()
-    if (error) throw error
-    return data
+    const { data, error } = await sb.from('users').insert({ firstname: fn.trim().toLowerCase(), lastname: ln.trim().toLowerCase(), display_name: capFull(fn)+' '+capFull(ln), email: email.trim().toLowerCase(), pin_hash: pinHash }).select().single()
+    if (error) throw error; return data
+  },
+  async getAllUsers() {
+    const { data } = await sb.from('users').select('id, display_name, firstname, lastname').order('lastname')
+    return data || []
+  },
+  async resetPin(userId) {
+    await sb.from('users').update({ pin_hash: hash('1234') }).eq('id', userId)
   },
   async getRides(all = false) {
     let q = sb.from('rides').select('*, bookings(*)').gte('date', cutoff()).order('date').order('time')
     if (!all) q = q.eq('status', 'active')
-    const { data } = await q
-    return (data || []).filter(r => !isPast(r.date, r.time) || all)
+    const { data } = await q; return (data || []).filter(r => !isPast(r.date, r.time) || all)
   },
   async addRide(r) {
     const { data, error } = await sb.from('rides').insert({ ...r, status: 'active' }).select().single()
-    if (error) throw error
-    return data
+    if (error) throw error; return data
   },
   async updateRide(id, u) { await sb.from('rides').update(u).eq('id', id) },
   async cancelRide(id)    { await sb.from('rides').update({ status: 'cancelled' }).eq('id', id) },
+  async cancelManyRides(ids) { await sb.from('rides').update({ status: 'cancelled' }).in('id', ids) },
   async bookRide(rideId, userId, userName, userEmail, seats) {
     const { data: r } = await sb.from('rides').select('seats_left').eq('id', rideId).single()
     if (!r || r.seats_left < seats) throw new Error('Nicht genug Plätze')
@@ -115,41 +104,27 @@ const db = {
   },
   async addRequest(r) {
     const { data, error } = await sb.from('requests').insert(r).select().single()
-    if (error) throw error
-    return data
+    if (error) throw error; return data
   },
   async acceptRequest(req, driver) {
-    const ride = await db.addRide({
-      driver_id: driver.id, driver_name: driver.display_name,
-      from_stop: req.from_stop, to_stop: req.to_stop,
-      date: req.date, time: req.time, seats: 1, seats_left: 0,
-      note: `Mitnahme von ${req.requester_name}`,
-    })
+    const ride = await db.addRide({ driver_id: driver.id, driver_name: driver.display_name, from_stop: req.from_stop, to_stop: req.to_stop, date: req.date, time: req.time, seats: 1, seats_left: 0, note: `Mitnahme von ${req.requester_name}` })
     await sb.from('bookings').insert({ ride_id: ride.id, user_id: req.requester_id, user_name: req.requester_name, user_email: '', seats: 1 })
     await sb.from('requests').update({ status: 'accepted', driver_id: driver.id, driver_name: driver.display_name }).eq('id', req.id)
   },
   async deleteRequest(id) { await sb.from('requests').delete().eq('id', id) },
-  async sendMessage(userId, userName, message) {
-    await sb.from('messages').insert({ user_id: userId, user_name: userName, message })
-  },
+  async sendMessage(userId, userName, message) { await sb.from('messages').insert({ user_id: userId, user_name: userName, message }) },
 }
 
-/* ── Farben ───────────────────────────────────────────────── */
-const MFB  = '#00B4C5'
-const MFBD = '#0096A8'
-const MFBL = '#E0F7FA'
-const TC   = { buchen: '#3B82F6', anfrage: '#F59E0B', anbieten: '#10B981', meine: '#8B5CF6' }
-const R    = '#EF4444'
-const G    = '#6B7280'
-
-/* ── Styles ───────────────────────────────────────────────── */
+const MFB = '#00B4C5', MFBD = '#0096A8', MFBL = '#E0F7FA'
+const TC  = { buchen: '#3B82F6', anfrage: '#F59E0B', anbieten: '#10B981', meine: '#8B5CF6' }
+const R = '#EF4444', G = '#6B7280'
 const sInp  = { width: '100%', padding: '12px 14px', borderRadius: 12, border: '1.5px solid #cde0d0', fontSize: 16, boxSizing: 'border-box', outline: 'none', background: '#f7fbf8', fontFamily: 'inherit' }
 const sCard = { background: '#fff', borderRadius: 16, padding: 18, boxShadow: '0 2px 16px rgba(0,0,0,0.07)', marginBottom: 12 }
 const sLbl  = { fontSize: 12, fontWeight: 700, color: G, marginBottom: 5, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }
 const sBtn  = (bg = MFB, col = '#fff') => ({ background: bg, color: col, border: 'none', borderRadius: 12, padding: '13px 20px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%', fontFamily: 'inherit' })
-const sTag  = c => ({ background: c + '22', color: c, borderRadius: 6, padding: '3px 9px', fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center' })
+const sTag  = c => ({ background: c+'22', color: c, borderRadius: 6, padding: '3px 9px', fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center' })
+const sTrash = { background: '#fef2f2', border: 'none', borderRadius: 9, width: 38, height: 38, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }
 
-/* ── Icons ────────────────────────────────────────────────── */
 const IP = {
   car:    'M5 13l1.5-4.5h11L19 13M3 17h1v1a1 1 0 002 0v-1h12v1a1 1 0 002 0v-1h1v-4l-2-6H5L3 13v4zm4-2a1 1 0 110 2 1 1 0 010-2zm10 0a1 1 0 110 2 1 1 0 010-2z',
   ticket: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 000 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 000-4V7a2 2 0 00-2-2H5z',
@@ -162,6 +137,8 @@ const IP = {
   back:   'M19 12H5M12 5l-7 7 7 7',
   hand:   'M18 11V6a2 2 0 00-2-2v0a2 2 0 00-2 2v0M14 10V4a2 2 0 00-2-2v0a2 2 0 00-2 2v0m-2 6V6a2 2 0 00-2-2v0a2 2 0 00-2 2v4m0 0v6a6 6 0 0012 0v-4',
   msg:    'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z',
+  key:    'M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4',
+  select: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
 }
 const Icon = ({ n, size = 18, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -169,7 +146,6 @@ const Icon = ({ n, size = 18, color = 'currentColor' }) => (
   </svg>
 )
 
-/* ── MFB Logo ─────────────────────────────────────────────── */
 const MFBLogo = () => (
   <div style={{ background: MFB, borderRadius: 20, padding: '14px 24px', boxShadow: `0 8px 28px ${MFB}66`, display: 'inline-block' }}>
     <div style={{ display: 'flex', alignItems: 'flex-end' }}>
@@ -185,7 +161,6 @@ const MFBLogo = () => (
   </div>
 )
 
-/* ── Hilfskomponenten ─────────────────────────────────────── */
 const ErrBox = ({ msg }) => msg ? <div style={{ color: R, fontSize: 14, marginBottom: 16, padding: '10px 14px', background: '#fef2f2', borderRadius: 10 }}>{msg}</div> : null
 const OkBox  = ({ msg }) => msg ? <div style={{ background: '#d1fae5', borderRadius: 12, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, color: '#065f46', fontWeight: 600 }}><Icon n="check" size={18} color="#10B981" />{msg}</div> : null
 
@@ -204,7 +179,6 @@ function ConfirmModal({ title, msg, confirmLabel = 'Ja, stornieren', confirmColo
   )
 }
 
-/* ── Wochentag-Wähler ─────────────────────────────────────── */
 function DayPicker({ selected, onChange }) {
   const toggle = d => onChange(selected.includes(d) ? selected.filter(x => x !== d) : [...selected, d])
   return (
@@ -221,7 +195,6 @@ function DayPicker({ selected, onChange }) {
   )
 }
 
-/* ── PIN Eingabe ──────────────────────────────────────────── */
 function PinInput({ value, onChange, autoFocus }) {
   const r0 = useRef(), r1 = useRef(), r2 = useRef(), r3 = useRef()
   const refs = [r0, r1, r2, r3]
@@ -250,7 +223,6 @@ function PinInput({ value, onChange, autoFocus }) {
   )
 }
 
-/* ── Drum Clock ───────────────────────────────────────────── */
 const IH = 44, VN = 5
 function DrumCol({ items, value, onChange }) {
   const ref = useRef(), sY = useRef(0), sI = useRef(0)
@@ -300,7 +272,7 @@ function ClockPicker({ value, onConfirm, onClose }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', padding: '0 24px 24px' }}>
           <DrumCol items={HH} value={h} onChange={setH} />
-          <div style={{ fontSize: 28, fontWeight: 300, color: '#1a2e1a', padding: '0 8px', flexShrink: 0, marginBottom: 4 }}>:</div>
+          <div style={{ fontSize: 28, fontWeight: 300, color: '#1a2e1a', padding: '0 8px', flexShrink: 0 }}>:</div>
           <DrumCol items={MM} value={m} onChange={setM} />
         </div>
       </div>
@@ -308,7 +280,6 @@ function ClockPicker({ value, onConfirm, onClose }) {
   )
 }
 
-/* ── Routen-Auswahl ───────────────────────────────────────── */
 function RoutePicker({ value, onChange }) {
   const selIdx = value ? ROUTE_PAIRS.findIndex(r => r.from === value.from && r.to === value.to) : -1
   return (
@@ -318,24 +289,17 @@ function RoutePicker({ value, onChange }) {
         value={selIdx === -1 ? '' : selIdx}
         onChange={e => { const i = +e.target.value; if (!isNaN(i)) onChange(ROUTE_PAIRS[i]) }}>
         <option value="">– Bitte Route auswählen –</option>
-        {ROUTE_PAIRS.map((r, i) => (
-          <option key={i} value={i}>{SH[r.from]} → {SH[r.to]}</option>
-        ))}
+        {ROUTE_PAIRS.map((r, i) => <option key={i} value={i}>{SH[r.from]} → {SH[r.to]}</option>)}
       </select>
     </div>
   )
 }
 
-/* ── Stornierungsbenachrichtigung ─────────────────────────── */
 function CancelNotifications({ userId }) {
   const [items, setItems] = useState([])
-  useEffect(() => {
-    db.getCancelledForUser(userId).then(rides => {
-      setItems(rides.filter(r => seenNotifs.unseen([r.id]).length > 0))
-    })
-  }, [userId])
-  const dismiss    = id  => { seenNotifs.mark(id); setItems(prev => prev.filter(r => r.id !== id)) }
-  const dismissAll = ()  => { items.forEach(r => seenNotifs.mark(r.id)); setItems([]) }
+  useEffect(() => { db.getCancelledForUser(userId).then(rides => setItems(rides.filter(r => seenNotifs.unseen([r.id]).length > 0))) }, [userId])
+  const dismiss    = id => { seenNotifs.mark(id); setItems(prev => prev.filter(r => r.id !== id)) }
+  const dismissAll = () => { items.forEach(r => seenNotifs.mark(r.id)); setItems([]) }
   if (!items.length) return null
   return (
     <div style={{ background: '#fef2f2', borderBottom: '2px solid #fecaca', flexShrink: 0 }}>
@@ -346,9 +310,7 @@ function CancelNotifications({ userId }) {
             {items.length === 1 ? '1 Fahrt storniert' : `${items.length} Fahrten storniert`}
           </span>
         </div>
-        {items.length > 1 && (
-          <button onClick={dismissAll} style={{ background: 'none', border: 'none', color: R, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Alle bestätigen ✓</button>
-        )}
+        {items.length > 1 && <button onClick={dismissAll} style={{ background: 'none', border: 'none', color: R, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Alle bestätigen ✓</button>}
       </div>
       {items.map(ride => (
         <div key={ride.id} style={{ margin: '6px 12px 10px', background: '#fff', borderRadius: 12, padding: '12px 14px', border: `1.5px solid #fecaca`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
@@ -363,7 +325,57 @@ function CancelNotifications({ userId }) {
   )
 }
 
-/* ── Hilfe auf Login-Seite ────────────────────────────────── */
+/* ── Admin Panel ──────────────────────────────────────────── */
+function AdminPanel({ onClose }) {
+  const [code, setCode]   = useState('')
+  const [auth, setAuth]   = useState(false)
+  const [users, setUsers] = useState([])
+  const [ok, setOk]       = useState('')
+  const [busy, setBusy]   = useState(false)
+
+  const unlock = () => {
+    if (code.trim().toUpperCase() === ADMIN_CODE) { setAuth(true); db.getAllUsers().then(setUsers) }
+    else setCode('')
+  }
+  const resetPin = async u => {
+    setBusy(true); await db.resetPin(u.id)
+    setOk(`PIN von ${u.display_name} auf 1234 zurückgesetzt.`); setBusy(false)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400, padding: 24, boxSizing: 'border-box' }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 24, width: '100%', maxWidth: 400, maxHeight: '85vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>🔑 Admin</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: G }}>×</button>
+        </div>
+        {!auth ? (
+          <>
+            <label style={sLbl}>Admin-Code eingeben</label>
+            <input style={{ ...sInp, marginBottom: 14, letterSpacing: 3, fontWeight: 700 }} placeholder="••••••••" type="password"
+              value={code} onChange={e => setCode(e.target.value)} onKeyDown={e => e.key === 'Enter' && unlock()} />
+            <button style={sBtn()} onClick={unlock}>Entsperren</button>
+          </>
+        ) : (
+          <>
+            <OkBox msg={ok} />
+            <p style={{ color: G, fontSize: 13, marginBottom: 16 }}>PIN zurücksetzen → neue PIN ist <b>1234</b>. Person muss nach Anmeldung neuen PIN wählen.</p>
+            {users.map(u => (
+              <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #f0f0f0' }}>
+                <span style={{ fontWeight: 600 }}>{u.display_name}</span>
+                <button onClick={() => resetPin(u)} disabled={busy}
+                  style={{ background: '#fef2f2', color: R, border: `1px solid #fecaca`, borderRadius: 9, padding: '7px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <Icon n="key" size={13} color={R} /> PIN Reset
+                </button>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function LoginHelp() {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -402,7 +414,6 @@ function LoginHelp() {
   )
 }
 
-/* ── Anmeldung ────────────────────────────────────────────── */
 function AuthScreen({ onLogin }) {
   const saved = sess.getName()
   const [step, setStep]   = useState(1)
@@ -415,6 +426,13 @@ function AuthScreen({ onLogin }) {
   const [pin2, setPin2]   = useState('')
   const [errMsg, setErr]  = useState('')
   const [busy, setBusy]   = useState(false)
+  const [showAdmin, setShowAdmin] = useState(false)
+  const tapCount = useRef(0)
+
+  const handleLogoTap = () => {
+    tapCount.current += 1
+    if (tapCount.current >= 5) { tapCount.current = 0; setShowAdmin(true) }
+  }
 
   const goStep2 = async () => {
     if (!fn.trim() || !ln.trim()) { setErr('Bitte Vor- und Nachname eingeben.'); return }
@@ -446,11 +464,17 @@ function AuthScreen({ onLogin }) {
   return (
     <div style={{ minHeight: '100dvh', background: '#f0fafb', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: "'Segoe UI',system-ui,sans-serif", boxSizing: 'border-box', overflowX: 'hidden' }}>
       <div style={{ width: '100%', maxWidth: 380, boxSizing: 'border-box' }}>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <MFBLogo />
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div onClick={handleLogoTap} style={{ cursor: 'default', display: 'inline-block' }}>
+            <MFBLogo />
+          </div>
           <h1 style={{ fontSize: 22, fontWeight: 900, margin: '16px 0 4px', color: '#1a2e1a' }}>Mitfahrbänkli Alten</h1>
-          <p style={{ color: G, margin: 0, fontSize: 14 }}>Marthalen · Alten · Andelfingen</p>
+          <p style={{ color: G, margin: '0 0 8px', fontSize: 14 }}>Marthalen · Alten · Andelfingen</p>
+          <div style={{ background: '#fffbeb', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e', border: '1px solid #fde68a', textAlign: 'left' }}>
+            ℹ️ Fahrten sind nicht garantiert und können sich kurzfristig ändern (z.B. bei Krankheit). Bitte plane entsprechend.
+          </div>
         </div>
+
         {step === 1 ? (
           <div style={sCard}>
             <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 800 }}>Willkommen!</h2>
@@ -490,29 +514,28 @@ function AuthScreen({ onLogin }) {
         <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 12 }}>🔒 PINs werden verschlüsselt gespeichert</p>
         <LoginHelp />
       </div>
+      {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
     </div>
   )
 }
 
-/* ── Fahrt-Formular (Anbieten + Bearbeiten) ───────────────── */
 function RideForm({ user, initial, onSave, onClose }) {
   const nowH = String(new Date().getHours()).padStart(2, '0')
   const nowM = String(new Date().getMinutes()).padStart(2, '0')
   const editing     = !!initial
   const bookedSeats = initial?.bookings?.reduce((s, b) => s + b.seats, 0) || 0
   const initRoute   = initial ? ROUTE_PAIRS.find(r => r.from === initial.from_stop && r.to === initial.to_stop) || null : null
-
-  const [mode, setMode]           = useState('once')
-  const [route, setRoute]         = useState(initRoute)
-  const [date, setDate]           = useState(initial?.date || tday())
-  const [time, setTime]           = useState(initial?.time || `${nowH}:${nowM}`)
-  const [seats, setSeats]         = useState(String(initial?.seats || 3))
-  const [note, setNote]           = useState(initial?.note || '')
-  const [selectedDays, setSDays]  = useState([])
-  const [endDate, setEndDate]     = useState('')
-  const [clock, setClock]         = useState(false)
-  const [errMsg, setErr]          = useState('')
-  const [busy, setBusy]           = useState(false)
+  const [mode, setMode]         = useState('once')
+  const [route, setRoute]       = useState(initRoute)
+  const [date, setDate]         = useState(initial?.date || tday())
+  const [time, setTime]         = useState(initial?.time || `${nowH}:${nowM}`)
+  const [seats, setSeats]       = useState(String(initial?.seats || 3))
+  const [note, setNote]         = useState(initial?.note || '')
+  const [selectedDays, setSDays]= useState([])
+  const [endDate, setEndDate]   = useState('')
+  const [clock, setClock]       = useState(false)
+  const [errMsg, setErr]        = useState('')
+  const [busy, setBusy]         = useState(false)
 
   const submit = async () => {
     if (!route) { setErr('Bitte Route wählen.'); return }
@@ -530,9 +553,7 @@ function RideForm({ user, initial, onSave, onClose }) {
       } else {
         const dates = getDatesForDays(selectedDays, endDate)
         if (dates.length === 0) { setErr('Keine passenden Daten gefunden.'); setBusy(false); return }
-        for (const d of dates) {
-          await db.addRide({ driver_id: user.id, driver_name: user.display_name, from_stop: route.from, to_stop: route.to, date: d, time, seats: +seats, seats_left: +seats, note: note.trim() })
-        }
+        for (const d of dates) await db.addRide({ driver_id: user.id, driver_name: user.display_name, from_stop: route.from, to_stop: route.to, date: d, time, seats: +seats, seats_left: +seats, note: note.trim() })
         onSave({ from: route.from, to: route.to, date: dates[0], time, seats, count: dates.length })
       }
     } catch (e) { setErr('Fehler: ' + e.message) }
@@ -541,23 +562,18 @@ function RideForm({ user, initial, onSave, onClose }) {
 
   const inner = (
     <>
-      {editing && bookedSeats > 0 && <div style={{ background: '#fffbeb', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#92400e', borderLeft: '3px solid #f59e0b' }}>⚠️ {bookedSeats > 1 ? `${bookedSeats} Plätze` : '1 Platz'} bereits gebucht!</div>}
-
+      {editing && bookedSeats > 0 && <div style={{ background: '#fffbeb', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#92400e', borderLeft: '3px solid #f59e0b' }}>⚠️ {pl(bookedSeats)} bereits gebucht!</div>}
       {!editing && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {[['once','📅 Einmalig'],['repeat','🔁 Wiederkehrend']].map(([m, lbl]) => (
             <button key={m} onClick={() => setMode(m)}
               style={{ flex: 1, padding: '11px 8px', borderRadius: 12, border: `2px solid ${mode === m ? MFB : '#cde0d0'}`,
                 background: mode === m ? MFBL : '#f7fbf8', fontWeight: mode === m ? 700 : 400,
-                color: mode === m ? MFB : G, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, transition: 'all .15s' }}>
-              {lbl}
-            </button>
+                color: mode === m ? MFB : G, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, transition: 'all .15s' }}>{lbl}</button>
           ))}
         </div>
       )}
-
       <div style={{ marginBottom: 16 }}><RoutePicker value={route} onChange={setRoute} /></div>
-
       {mode === 'once' ? (
         <div style={{ marginBottom: 16 }}>
           <label style={sLbl}>Datum</label>
@@ -565,17 +581,13 @@ function RideForm({ user, initial, onSave, onClose }) {
         </div>
       ) : (
         <>
-          <div style={{ marginBottom: 16 }}>
-            <label style={sLbl}>Wochentage</label>
-            <DayPicker selected={selectedDays} onChange={setSDays} />
-          </div>
+          <div style={{ marginBottom: 16 }}><label style={sLbl}>Wochentage</label><DayPicker selected={selectedDays} onChange={setSDays} /></div>
           <div style={{ marginBottom: 16 }}>
             <label style={sLbl}>Bis wann</label>
             <input style={sInp} type="date" value={endDate} min={tday()} onChange={e => setEndDate(e.target.value)} onClick={e => e.target.showPicker?.()} />
           </div>
         </>
       )}
-
       <div style={{ marginBottom: 16 }}>
         <label style={sLbl}>Abfahrtszeit</label>
         <button onClick={() => setClock(true)} style={{ ...sInp, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
@@ -613,15 +625,23 @@ function RideForm({ user, initial, onSave, onClose }) {
   )
 }
 
-/* ── Fahrt-Karte ──────────────────────────────────────────── */
-function RideCard({ ride, user, onBook, onEdit, onCancelRide, onCancelBooking }) {
+function RideCard({ ride, user, onBook, onEdit, onCancelRide, onCancelBooking, selectable, selected, onSelect }) {
   const isOwn     = ride.driver_id === user.id
   const booking   = ride.bookings?.find(b => b.user_id === user.id)
   const past      = isPast(ride.date, ride.time)
   const cancelled = ride.status === 'cancelled'
   const borderCol = cancelled ? R : isOwn ? TC.anbieten : booking ? TC.buchen : MFB
   return (
-    <div style={{ ...sCard, borderLeft: `4px solid ${borderCol}`, opacity: past ? 0.55 : 1 }}>
+    <div style={{ ...sCard, borderLeft: `4px solid ${borderCol}`, opacity: past ? 0.55 : 1 }}
+      onClick={selectable ? () => onSelect(ride.id) : undefined}>
+      {selectable && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${selected ? R : '#cde0d0'}`, background: selected ? R : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {selected && <Icon n="check" size={13} color="#fff" />}
+          </div>
+          <span style={{ fontSize: 13, color: G }}>Auswählen zum Stornieren</span>
+        </div>
+      )}
       {cancelled && <div style={{ background: '#fef2f2', borderRadius: 8, padding: '6px 12px', marginBottom: 10, color: R, fontWeight: 700, fontSize: 13 }}>🚫 Diese Fahrt wurde storniert</div>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <div>
@@ -630,10 +650,10 @@ function RideCard({ ride, user, onBook, onEdit, onCancelRide, onCancelBooking })
             <Icon n="clock" size={12} color="#9ca3af" /> {dlbl(ride.date, ride.time)}, {ride.time} Uhr
           </div>
         </div>
-        {isOwn && !past && !cancelled && (
+        {isOwn && !past && !cancelled && !selectable && (
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => onEdit(ride)} style={{ background: '#f0fafb', border: 'none', borderRadius: 9, width: 38, height: 38, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon n="edit" size={16} color={MFB} /></button>
-            <button onClick={() => onCancelRide(ride)} style={{ background: '#fef2f2', border: 'none', borderRadius: 9, width: 38, height: 38, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon n="trash" size={16} color={R} /></button>
+            <button onClick={e => { e.stopPropagation(); onEdit(ride) }} style={{ background: '#f0fafb', border: 'none', borderRadius: 9, width: 38, height: 38, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon n="edit" size={16} color={MFB} /></button>
+            <button onClick={e => { e.stopPropagation(); onCancelRide(ride) }} style={sTrash}><Icon n="trash" size={16} color={R} /></button>
           </div>
         )}
       </div>
@@ -651,12 +671,15 @@ function RideCard({ ride, user, onBook, onEdit, onCancelRide, onCancelBooking })
         </div>
       )}
       {!isOwn && !booking && ride.seats_left > 0 && !past && !cancelled && <button style={sBtn(TC.buchen)} onClick={() => onBook(ride)}>Mitfahren</button>}
-      {!isOwn && booking && !past && !cancelled && <button style={sBtn('#fef2f2', R)} onClick={() => onCancelBooking(ride, booking)}>Buchung stornieren</button>}
+      {!isOwn && booking && !past && !cancelled && (
+        <button style={sBtn('#fef2f2', R)} onClick={() => onCancelBooking(ride, booking)}>
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Icon n="trash" size={16} color={R} /> Buchung stornieren</span>
+        </button>
+      )}
     </div>
   )
 }
 
-/* ── Anfrage-Karte ────────────────────────────────────────── */
 function ReqCard({ req, user, onAccept, onCancel }) {
   const isOwn    = req.requester_id === user.id
   const accepted = req.status === 'accepted'
@@ -669,7 +692,7 @@ function ReqCard({ req, user, onAccept, onCancel }) {
             <Icon n="clock" size={12} color="#9ca3af" /> {dlbl(req.date, req.time)}, {req.time} Uhr
           </div>
         </div>
-        {isOwn && !accepted && <button onClick={() => onCancel(req)} style={{ background: '#fef2f2', border: 'none', borderRadius: 9, width: 38, height: 38, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon n="trash" size={16} color={R} /></button>}
+        {isOwn && !accepted && <button onClick={() => onCancel(req)} style={sTrash}><Icon n="trash" size={16} color={R} /></button>}
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: req.note ? 10 : 12 }}>
         <span style={sTag(TC.anfrage)}>🙋 {req.requester_name}</span>
@@ -682,15 +705,10 @@ function ReqCard({ req, user, onAccept, onCancel }) {
   )
 }
 
-/* ── Buchungsmodal ────────────────────────────────────────── */
 function BookModal({ ride, user, onConfirm, onClose }) {
   const [seats, setSeats] = useState(1)
   const [busy, setBusy]   = useState(false)
-  const confirm = async () => {
-    setBusy(true)
-    await db.bookRide(ride.id, user.id, user.display_name, user.email, seats)
-    onConfirm(ride); setBusy(false)
-  }
+  const confirm = async () => { setBusy(true); await db.bookRide(ride.id, user.id, user.display_name, user.email, seats); onConfirm(ride); setBusy(false) }
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', zIndex: 100 }}>
       <div style={{ background: '#fff', borderRadius: '22px 22px 0 0', padding: '24px 24px 36px', width: '100%', maxWidth: 480, margin: '0 auto', boxSizing: 'border-box' }}>
@@ -711,7 +729,6 @@ function BookModal({ ride, user, onConfirm, onClose }) {
   )
 }
 
-/* ── Kontaktformular (in Meine) ───────────────────────────── */
 function ContactSection({ user }) {
   const [msg, setMsg]   = useState('')
   const [sent, setSent] = useState(false)
@@ -726,7 +743,10 @@ function ContactSection({ user }) {
         <Icon n="msg" size={20} color={TC.meine} />
         <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>Hilfe & Kontakt</h3>
       </div>
-      <p style={{ color: G, fontSize: 13, margin: '0 0 14px', lineHeight: 1.6 }}>PIN vergessen, Konto löschen oder andere Fragen? Schreib uns.</p>
+      <p style={{ color: G, fontSize: 13, margin: '0 0 14px', lineHeight: 1.6 }}>
+        Fragen, PIN vergessen oder Konto löschen?<br />
+        <span style={{ color: '#1a2e1a', fontWeight: 600 }}>Wichtig:</span> Hinterlasse deine <b>Telefonnummer oder E-Mail</b> damit wir dich erreichen können.
+      </p>
       {sent ? <OkBox msg="Nachricht gesendet! Du erhältst bald eine Antwort." /> : (
         <>
           <textarea style={{ ...sInp, minHeight: 90, resize: 'vertical', marginBottom: 12 }}
@@ -738,7 +758,6 @@ function ContactSection({ user }) {
   )
 }
 
-/* ── Tab: Buchen ──────────────────────────────────────────── */
 function BuchenTab({ user }) {
   const [rides, setRides]       = useState([])
   const [fDate, setFD]          = useState('')
@@ -747,17 +766,9 @@ function BuchenTab({ user }) {
   const [ok, setOk]             = useState('')
   const [hint, setHint]         = useState('')
   const [loading, setLoading]   = useState(true)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    const r = await db.getRides()
-    setRides(r.filter(x => x.driver_id !== user.id && !isPast(x.date, x.time)))
-    setLoading(false)
-  }, [user.id])
+  const load = useCallback(async () => { setLoading(true); const r = await db.getRides(); setRides(r.filter(x => x.driver_id !== user.id && !isPast(x.date, x.time))); setLoading(false) }, [user.id])
   useEffect(() => { load() }, [load])
-
   const list = rides.filter(r => !fDate || r.date === fDate)
-
   return (
     <div style={{ padding: 16 }}>
       <div style={{ ...sCard, padding: 14 }}>
@@ -765,36 +776,23 @@ function BuchenTab({ user }) {
         <input style={sInp} type="date" value={fDate} min={tday()} onChange={e => setFD(e.target.value)} onClick={e => e.target.showPicker?.()} />
         {fDate && <button style={{ ...sBtn('#f4f7f4', G), marginTop: 10, padding: '9px 14px', fontSize: 14 }} onClick={() => setFD('')}>× Zurücksetzen</button>}
       </div>
-      {ok && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ background: '#d1fae5', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, color: '#065f46', fontWeight: 600 }}>
-            <Icon n="check" size={18} color="#10B981" />{ok}
-          </div>
-          {hint && <div style={{ background: '#f0fafb', borderRadius: 12, padding: '12px 16px', marginTop: 8, fontSize: 14, color: '#1a4a50', borderLeft: `3px solid ${MFB}` }}>{hint}</div>}
-        </div>
-      )}
-      {loading
-        ? <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Laden…</div>
+      {ok && <div style={{ marginBottom: 12 }}>
+        <div style={{ background: '#d1fae5', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, color: '#065f46', fontWeight: 600 }}><Icon n="check" size={18} color="#10B981" />{ok}</div>
+        {hint && <div style={{ background: '#f0fafb', borderRadius: 12, padding: '12px 16px', marginTop: 8, fontSize: 14, color: '#1a4a50', borderLeft: `3px solid ${MFB}` }}>{hint}</div>}
+      </div>}
+      {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Laden…</div>
         : list.length === 0
           ? <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}><Icon n="car" size={44} color="#d1d5db" /><p style={{ marginTop: 12 }}>Keine Fahrten verfügbar</p></div>
-          : list.map(r => (
-              <RideCard key={r.id} ride={r} user={user}
-                onBook={r => { setOk(''); setHint(''); setBooking(r) }}
-                onEdit={() => {}} onCancelRide={() => {}}
-                onCancelBooking={(r, b) => setCancel({ r, b })} />
-            ))
+          : list.map(r => <RideCard key={r.id} ride={r} user={user} onBook={r => { setOk(''); setHint(''); setBooking(r) }} onEdit={() => {}} onCancelRide={() => {}} onCancelBooking={(r, b) => setCancel({ r, b })} />)
       }
       {booking && <BookModal ride={booking} user={user} onConfirm={r => { setBooking(null); setOk('Fahrt gebucht! 🎉'); setHint(getBenchHint(r) || ''); load() }} onClose={() => setBooking(null)} />}
-      {cancelConf && (
-        <ConfirmModal title="Buchung stornieren?" msg={`Buchung ${SH[cancelConf.r.from_stop]} → ${SH[cancelConf.r.to_stop]} am ${cancelConf.r.date} wirklich stornieren?`}
-          onYes={async () => { await db.cancelBooking(cancelConf.b.id, cancelConf.r.id, cancelConf.b.seats); setCancel(null); setOk('Buchung storniert.'); setHint(''); load() }}
-          onNo={() => setCancel(null)} />
-      )}
+      {cancelConf && <ConfirmModal title="Buchung stornieren?" msg={`Buchung ${SH[cancelConf.r.from_stop]} → ${SH[cancelConf.r.to_stop]} am ${cancelConf.r.date} wirklich stornieren?`}
+        onYes={async () => { await db.cancelBooking(cancelConf.b.id, cancelConf.r.id, cancelConf.b.seats); setCancel(null); setOk('Buchung storniert.'); setHint(''); load() }}
+        onNo={() => setCancel(null)} />}
     </div>
   )
 }
 
-/* ── Tab: Anfrage ─────────────────────────────────────────── */
 function AnfrageTab({ user }) {
   const nowH = String(new Date().getHours()).padStart(2, '0')
   const nowM = String(new Date().getMinutes()).padStart(2, '0')
@@ -813,13 +811,12 @@ function AnfrageTab({ user }) {
   const [confirm, setConfirm]   = useState(null)
   const [busy, setBusy]         = useState(false)
   const [loading, setLoading]   = useState(true)
-
   const load = useCallback(async () => { setLoading(true); setReqs(await db.getRequests()); setLoading(false) }, [])
   useEffect(() => { load() }, [load])
 
   const submit = async () => {
     if (!route) { setErr('Bitte Route wählen.'); return }
-    if (mode === 'repeat' && selectedDays.length === 0) { setErr('Bitte mindestens einen Wochentag wählen.'); return }
+    if (mode === 'repeat' && selectedDays.length === 0) { setErr('Bitte Wochentage wählen.'); return }
     if (mode === 'repeat' && !endDate) { setErr('Bitte Enddatum angeben.'); return }
     setBusy(true); setErr('')
     if (mode === 'once') {
@@ -827,20 +824,13 @@ function AnfrageTab({ user }) {
       setOk('Anfrage gesendet! 🙋')
     } else {
       const dates = getDatesForDays(selectedDays, endDate)
-      if (dates.length === 0) { setErr('Keine passenden Daten gefunden.'); setBusy(false); return }
-      for (const d of dates) {
-        await db.addRequest({ requester_id: user.id, requester_name: user.display_name, from_stop: route.from, to_stop: route.to, date: d, time, note: note.trim(), status: 'open' })
-      }
+      if (dates.length === 0) { setErr('Keine passenden Daten.'); setBusy(false); return }
+      for (const d of dates) await db.addRequest({ requester_id: user.id, requester_name: user.display_name, from_stop: route.from, to_stop: route.to, date: d, time, note: note.trim(), status: 'open' })
       setOk(`${dates.length} Anfragen gesendet! 🙋`)
     }
     setShow(false); setNote(''); setRoute(null); setSDays([]); setEndDate(''); load(); setBusy(false)
   }
-
-  const doAccept = async () => {
-    setBusy(true); await db.acceptRequest(confirm, user)
-    setConfirm(null); setOk('Du fährst! Fahrt wurde erstellt. 🚗'); load(); setBusy(false)
-  }
-
+  const doAccept = async () => { setBusy(true); await db.acceptRequest(confirm, user); setConfirm(null); setOk('Du fährst! 🚗'); load(); setBusy(false) }
   const mine = reqs.filter(r => r.requester_id === user.id)
   const open  = reqs.filter(r => r.status === 'open' && r.requester_id !== user.id)
 
@@ -858,9 +848,7 @@ function AnfrageTab({ user }) {
               <button key={m} onClick={() => setMode(m)}
                 style={{ flex: 1, padding: '11px 8px', borderRadius: 12, border: `2px solid ${mode === m ? TC.anfrage : '#cde0d0'}`,
                   background: mode === m ? '#fffbeb' : '#f7fbf8', fontWeight: mode === m ? 700 : 400,
-                  color: mode === m ? TC.anfrage : G, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, transition: 'all .15s' }}>
-                {lbl}
-              </button>
+                  color: mode === m ? TC.anfrage : G, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>{lbl}</button>
             ))}
           </div>
           <div style={{ marginBottom: 16 }}><RoutePicker value={route} onChange={setRoute} /></div>
@@ -871,10 +859,7 @@ function AnfrageTab({ user }) {
             </div>
           ) : (
             <>
-              <div style={{ marginBottom: 16 }}>
-                <label style={sLbl}>Wochentage</label>
-                <DayPicker selected={selectedDays} onChange={setSDays} />
-              </div>
+              <div style={{ marginBottom: 16 }}><label style={sLbl}>Wochentage</label><DayPicker selected={selectedDays} onChange={setSDays} /></div>
               <div style={{ marginBottom: 16 }}>
                 <label style={sLbl}>Bis wann</label>
                 <input style={sInp} type="date" value={endDate} min={tday()} onChange={e => setEndDate(e.target.value)} onClick={e => e.target.showPicker?.()} />
@@ -890,7 +875,7 @@ function AnfrageTab({ user }) {
           </div>
           <div style={{ marginBottom: 20 }}>
             <label style={sLbl}>Hinweis (optional)</label>
-            <input style={sInp} placeholder="z.B. mit Einkauf, Rückfahrt nötig…" value={note} onChange={e => setNote(e.target.value)} />
+            <input style={sInp} placeholder="z.B. mit Einkauf…" value={note} onChange={e => setNote(e.target.value)} />
           </div>
           <ErrBox msg={errMsg} />
           <button style={sBtn(TC.anfrage)} onClick={submit} disabled={busy}>{busy ? '…' : 'Anfrage senden'}</button>
@@ -908,16 +893,13 @@ function AnfrageTab({ user }) {
           : open.map(r => <ReqCard key={r.id} req={r} user={user} onAccept={r => setConfirm(r)} onCancel={() => {}} />)
         }
       </>}
-      {confirm && (
-        <ConfirmModal title="Mitfahrt bestätigen?" confirmLabel="Ja, ich fahre! 🚗" confirmColor={TC.anfrage}
-          msg={`${confirm.requester_name} möchte von ${SH[confirm.from_stop]} nach ${SH[confirm.to_stop]} am ${confirm.date} um ${confirm.time} Uhr.`}
-          onYes={doAccept} onNo={() => setConfirm(null)} />
-      )}
+      {confirm && <ConfirmModal title="Mitfahrt bestätigen?" confirmLabel="Ja, ich fahre! 🚗" confirmColor={TC.anfrage}
+        msg={`${confirm.requester_name} möchte von ${SH[confirm.from_stop]} nach ${SH[confirm.to_stop]} am ${confirm.date} um ${confirm.time} Uhr.`}
+        onYes={doAccept} onNo={() => setConfirm(null)} />}
     </div>
   )
 }
 
-/* ── Tab: Anbieten ────────────────────────────────────────── */
 function AngebotenTab({ user }) {
   const [saved, setSaved] = useState(null)
   if (saved) return (
@@ -927,7 +909,7 @@ function AngebotenTab({ user }) {
         <h2 style={{ margin: '0 0 8px' }}>{saved.count > 1 ? `${saved.count} Fahrten eingetragen!` : 'Fahrt eingetragen!'}</h2>
         <p style={{ color: G, marginBottom: 24, lineHeight: 1.6 }}>
           <b>{SH[saved.from]}</b> → <b>{SH[saved.to]}</b><br />
-          {saved.count > 1 ? `${saved.count} Fahrten ab ${saved.date}` : `${new Date(saved.date + 'T' + saved.time).toLocaleDateString('de-CH', { weekday: 'long', day: 'numeric', month: 'long' })} · ${saved.time} Uhr`}
+          {saved.count > 1 ? `${saved.count} Fahrten ab ${saved.date}` : `${new Date(saved.date+'T'+saved.time).toLocaleDateString('de-CH', { weekday: 'long', day: 'numeric', month: 'long' })} · ${saved.time} Uhr`}
         </p>
         <button style={sBtn(TC.anbieten)} onClick={() => setSaved(null)}>Weitere Fahrt anbieten</button>
       </div>
@@ -936,14 +918,16 @@ function AngebotenTab({ user }) {
   return <div style={{ padding: 16 }}><RideForm user={user} onSave={setSaved} /></div>
 }
 
-/* ── Tab: Meine ───────────────────────────────────────────── */
 function MeineTab({ user }) {
-  const [rides, setRides]     = useState([])
-  const [reqs, setReqs]       = useState([])
-  const [editing, setEditing] = useState(null)
-  const [confirm, setConf]    = useState(null)
-  const [ok, setOk]           = useState('')
-  const [loading, setLoading] = useState(true)
+  const [rides, setRides]       = useState([])
+  const [reqs, setReqs]         = useState([])
+  const [editing, setEditing]   = useState(null)
+  const [confirm, setConf]      = useState(null)
+  const [ok, setOk]             = useState('')
+  const [loading, setLoading]   = useState(true)
+  const [selectMode, setSelect] = useState(false)
+  const [selected, setSelected] = useState([])
+  const [bulkConf, setBulkConf] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -956,6 +940,13 @@ function MeineTab({ user }) {
   const booked  = rides.filter(r => r.bookings?.some(b => b.user_id === user.id) && r.driver_id !== user.id)
   const myReqs  = reqs.filter(r => r.requester_id === user.id)
 
+  const toggleSelect = id => setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+
+  const doBulkCancel = async () => {
+    await db.cancelManyRides(selected); setSelect(false); setSelected([]); setBulkConf(false)
+    setOk(`${selected.length} Fahrten storniert.`); load()
+  }
+
   const doAction = async () => {
     const { type, data } = confirm
     if (type === 'ride')    { await db.cancelRide(data.id); setOk('Fahrt storniert.') }
@@ -964,50 +955,88 @@ function MeineTab({ user }) {
     setConf(null); load()
   }
 
-  const Sec = ({ title, color, items, empty, render }) => (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 11, fontWeight: 800, color, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />{title}
-      </div>
-      {loading
-        ? <div style={{ ...sCard, color: '#9ca3af', textAlign: 'center', padding: 16 }}>Laden…</div>
-        : items.length === 0
-          ? <div style={{ ...sCard, color: '#9ca3af', textAlign: 'center', padding: 20, fontSize: 14 }}>{empty}</div>
-          : items.map(render)
-      }
-    </div>
-  )
-
   return (
     <div style={{ padding: 16 }}>
       <OkBox msg={ok} />
-      <Sec title="Meine Fahrten (Fahrer)" color={TC.anbieten} items={offered} empty="Noch keine Fahrten angeboten"
-        render={r => <RideCard key={r.id} ride={r} user={user} onBook={() => {}}
-          onEdit={() => setEditing(r)}
-          onCancelRide={r => setConf({ type: 'ride', data: r, msg: r.bookings?.length > 0 ? `${r.bookings.length} Person(en) haben gebucht. Trotzdem stornieren?` : 'Fahrt wirklich stornieren?' })}
-          onCancelBooking={() => {}} />} />
-      <Sec title="Meine Buchungen (Mitfahrer)" color={TC.buchen} items={booked} empty="Noch keine Fahrten gebucht"
-        render={r => <RideCard key={r.id} ride={r} user={user} onBook={() => {}} onEdit={() => {}} onCancelRide={() => {}}
-          onCancelBooking={(r, b) => setConf({ type: 'booking', data: { r, b }, msg: `Buchung ${SH[r.from_stop]} → ${SH[r.to_stop]} am ${r.date} stornieren?` })} />} />
-      <Sec title="Meine Anfragen" color={TC.anfrage} items={myReqs} empty="Keine Anfragen"
-        render={r => <ReqCard key={r.id} req={r} user={user} onAccept={() => {}}
-          onCancel={r => setConf({ type: 'req', data: r, msg: `Anfrage ${SH[r.from_stop]} → ${SH[r.to_stop]} stornieren?` })} />} />
+
+      {/* Meine Fahrten (Fahrer) */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: TC.anbieten, letterSpacing: 1, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: TC.anbieten }} />Meine Fahrten (Fahrer)
+          </div>
+          {offered.length > 1 && (
+            <button onClick={() => { setSelect(!selectMode); setSelected([]) }}
+              style={{ background: selectMode ? '#fef2f2' : '#f0fafb', color: selectMode ? R : MFB, border: 'none', borderRadius: 9, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Icon n="select" size={13} color={selectMode ? R : MFB} />
+              {selectMode ? 'Abbrechen' : 'Mehrere löschen'}
+            </button>
+          )}
+        </div>
+        {loading
+          ? <div style={{ ...sCard, color: '#9ca3af', textAlign: 'center', padding: 16 }}>Laden…</div>
+          : offered.length === 0
+            ? <div style={{ ...sCard, color: '#9ca3af', textAlign: 'center', padding: 20, fontSize: 14 }}>Noch keine Fahrten angeboten</div>
+            : offered.map(r => (
+                <RideCard key={r.id} ride={r} user={user} onBook={() => {}}
+                  onEdit={() => setEditing(r)}
+                  onCancelRide={r => setConf({ type: 'ride', data: r, msg: r.bookings?.length > 0 ? `${r.bookings.length} Person(en) haben gebucht. Trotzdem stornieren?` : 'Fahrt wirklich stornieren?' })}
+                  onCancelBooking={() => {}}
+                  selectable={selectMode} selected={selected.includes(r.id)} onSelect={toggleSelect} />
+              ))
+        }
+        {selectMode && selected.length > 0 && (
+          <button style={{ ...sBtn(R), marginTop: 4 }} onClick={() => setBulkConf(true)}>
+            🗑️ {selected.length} Fahrt{selected.length > 1 ? 'en' : ''} stornieren
+          </button>
+        )}
+      </div>
+
+      {/* Meine Buchungen */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: TC.buchen, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: TC.buchen }} />Meine Buchungen (Mitfahrer)
+        </div>
+        {loading
+          ? <div style={{ ...sCard, color: '#9ca3af', textAlign: 'center', padding: 16 }}>Laden…</div>
+          : booked.length === 0
+            ? <div style={{ ...sCard, color: '#9ca3af', textAlign: 'center', padding: 20, fontSize: 14 }}>Noch keine Fahrten gebucht</div>
+            : booked.map(r => <RideCard key={r.id} ride={r} user={user} onBook={() => {}} onEdit={() => {}} onCancelRide={() => {}}
+                onCancelBooking={(r, b) => setConf({ type: 'booking', data: { r, b }, msg: `Buchung ${SH[r.from_stop]} → ${SH[r.to_stop]} am ${r.date} stornieren?` })} />)
+        }
+      </div>
+
+      {/* Meine Anfragen */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: TC.anfrage, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: TC.anfrage }} />Meine Anfragen
+        </div>
+        {loading
+          ? <div style={{ ...sCard, color: '#9ca3af', textAlign: 'center', padding: 16 }}>Laden…</div>
+          : myReqs.length === 0
+            ? <div style={{ ...sCard, color: '#9ca3af', textAlign: 'center', padding: 20, fontSize: 14 }}>Keine Anfragen</div>
+            : myReqs.map(r => <ReqCard key={r.id} req={r} user={user} onAccept={() => {}}
+                onCancel={r => setConf({ type: 'req', data: r, msg: `Anfrage ${SH[r.from_stop]} → ${SH[r.to_stop]} stornieren?` })} />)
+        }
+      </div>
+
       <ContactSection user={user} />
+
       {editing && <RideForm user={user} initial={editing} onSave={() => { setEditing(null); setOk('Fahrt aktualisiert.'); load() }} onClose={() => setEditing(null)} />}
       {confirm && <ConfirmModal title="Stornieren?" msg={confirm.msg} onYes={doAction} onNo={() => setConf(null)} />}
+      {bulkConf && <ConfirmModal title={`${selected.length} Fahrten stornieren?`} confirmLabel={`Ja, alle ${selected.length} stornieren`} confirmColor={R}
+        msg="Diese Fahrten werden für alle Mitfahrenden als storniert markiert."
+        onYes={doBulkCancel} onNo={() => setBulkConf(false)} />}
     </div>
   )
 }
 
-/* ── App Root ─────────────────────────────────────────────── */
 export default function App() {
   const [user, setUser]       = useState(null)
   const [tab, setTab]         = useState('buchen')
   const [loading, setLoading] = useState(true)
-
   useEffect(() => { const u = sess.get(); if (u) setUser(u); setLoading(false) }, [])
   const logout = () => { sess.clear(); setUser(null) }
-
   if (loading) return <div style={{ minHeight: '100dvh', background: '#f0fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui', color: '#9ca3af' }}>Laden…</div>
   if (!user)   return <AuthScreen onLogin={setUser} />
 
@@ -1031,7 +1060,6 @@ export default function App() {
           </button>
         </div>
       </div>
-
       <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', display: 'flex', flexShrink: 0 }}>
         {TABS.map(({ id, label, icon, color }) => (
           <button key={id} onClick={() => setTab(id)}
@@ -1044,9 +1072,7 @@ export default function App() {
           </button>
         ))}
       </div>
-
       <CancelNotifications userId={user.id} />
-
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {tab === 'buchen'   && <BuchenTab    user={user} />}
         {tab === 'anfrage'  && <AnfrageTab   user={user} />}
